@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, Link } from "react-router-dom";
 import UserDashboard from "./components/UserDashboard";
 import AdminDashboard from "./components/AdminDashboard";
+import LandingPage from "./components/LandingPage";
 
 function App() {
   return (
@@ -16,7 +17,7 @@ function App() {
       <Routes>
         <Route path="/user" element={<UserDashboard />} />
         <Route path="/admin" element={<AdminDashboard />} />
-        <Route path="/" element={<Home />} />
+        <Route path="/" element={<LandingPage />} />
       </Routes>
     </BrowserRouter>
   );

