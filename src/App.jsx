@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Link } from "react-router-dom";
 import UserDashboard from "./components/UserDashboard";
 import AdminDashboard from "./components/AdminDashboard";
 import LandingPage from "./components/LandingPage";
+import StudentDashboard from "./components/Student";
 
 function App() {
   return (
@@ -18,6 +19,7 @@ function App() {
         <Route path="/user" element={<UserDashboard />} />
         <Route path="/admin" element={<AdminDashboard />} />
         <Route path="/" element={<LandingPage />} />
+        <Route path="/student" element={<StudentDashboard />} />
       </Routes>
     </BrowserRouter>
   );
