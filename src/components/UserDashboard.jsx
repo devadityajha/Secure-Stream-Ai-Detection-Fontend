@@ -1,38 +1,19 @@
 import { useEffect, useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import io from "socket.io-client";
-
-const socket = io("http://localhost:3001");
 
 function UserDashboard() {
   const navigate = useNavigate();
   const [loginStatus, setLoginStatus] = useState("ready");
   const [isRobot, setIsRobot] = useState(true);
   const [scanProgress, setScanProgress] = useState(0);
-
   const streamRef = useRef(null);
-  const userIdRef = useRef(null);
 
   useEffect(() => {
-    // 🔥 GENERATE ONCE AND STORE
-    let userId = sessionStorage.getItem("userId");
-    if (!userId) {
-      userId = `student_${Math.random().toString(36).substr(2, 9)}`;
-      sessionStorage.setItem("userId", userId);
-    }
-    userIdRef.current = userId;
-
-    socket.on("connect", () => {
-      console.log("✅ USER: Socket connected!", socket.id);
-    });
-
-    socket.emit("register-user", userId);
-
+    // NO SOCKET LOGIC HERE!
     return () => {
       if (streamRef.current) {
         streamRef.current.getTracks().forEach((track) => track.stop());
       }
-      socket.off();
     };
   }, []);
 
@@ -68,10 +49,7 @@ function UserDashboard() {
 
       console.log("✅ USER: Camera access granted!");
       streamRef.current = stream;
-
       stream.getTracks().forEach((track) => track.stop());
-
-      socket.emit("camera-permission-granted");
 
       setLoginStatus("success");
 

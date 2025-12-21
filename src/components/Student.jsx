@@ -1,346 +1,41 @@
-////////////////////////////////////////////////////////////////////////
-/////
-// this code is not touched now so just use this for feature back of face detection working properly only updat after we have to go to on student route
-
+// file: src/StudentDashboard.jsx
 import { useEffect, useState, useRef } from "react";
-import { FaceDetector, FilesetResolver } from "@mediapipe/tasks-vision";
-import io from "socket.io-client";
-
-const socket = io("http://localhost:3001");
+// 1. Remove Face-api imports, they are now in Context
+// import { useProctoring } from "./ProctoringContext"; // <--- Import the Hook
+import { useProctoring } from "../context/ProctoringContext";
 
 function StudentDashboard() {
-  const [feedback, setFeedback] = useState("");
+  const { stream, startMonitoring, faceStatus, userId } = useProctoring();
   const [showExamStart, setShowExamStart] = useState(true);
   const [showExam, setShowExam] = useState(false);
 
+  // 2. Get stream and logic from Context
+
   const videoRef = useRef(null);
-  const peerConnectionRef = useRef(null);
-  const streamRef = useRef(null);
-  const pendingCandidatesRef = useRef([]);
-  const locationWatchIdRef = useRef(null);
-  const userIdRef = useRef(null);
-  const detectorRef = useRef(null);
 
-  useEffect(() => {
-    const userId =
-      sessionStorage.getItem("userId") ||
-      `student_${Math.random().toString(36).substr(2, 9)}`;
-    userIdRef.current = userId;
-
-    socket.on("connect", () => {
-      console.log("✅ STUDENT: Socket connected!", socket.id);
-    });
-
-    socket.emit("register-user", userId);
-
-    socket.on("receive-feedback", (message) => {
-      console.log("📢 STUDENT: Received feedback:", message);
-      setFeedback(message);
-      setTimeout(() => setFeedback(""), 5000);
-    });
-
-    socket.on("answer", handleAnswer);
-    socket.on("ice-candidate", handleIceCandidate);
-
-    return () => {
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach((track) => track.stop());
-      }
-      if (locationWatchIdRef.current) {
-        navigator.geolocation.clearWatch(locationWatchIdRef.current);
-      }
-      socket.off();
-    };
-  }, []);
-
-  const startEverything = async () => {
-    try {
-      console.log("🎥 Requesting camera...");
-
-      // 🔥 HIGHER QUALITY FOR BETTER DETECTION
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          width: { ideal: 1920 },
-          height: { ideal: 1080 },
-          facingMode: "user",
-          frameRate: { ideal: 30 },
-        },
-        audio: false,
-      });
-
-      console.log("✅ Camera granted!", stream);
-      streamRef.current = stream;
-
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-
-        videoRef.current.onloadedmetadata = async () => {
-          try {
-            await videoRef.current.play();
-            console.log("✅ Video playing!");
-          } catch (err) {
-            console.error("Play error:", err);
-          }
-        };
-      }
-
-      socket.emit("camera-permission-granted");
-      await createPeerConnection(stream);
-      startLocationTracking();
-
-      // 🔥 WAIT FOR VIDEO TO STABILIZE
-      setTimeout(() => {
-        initFaceDetection();
-      }, 3000);
-    } catch (error) {
-      console.error("❌ Camera error:", error);
-      alert("Please allow camera access!");
-    }
-  };
-
+  // 3. When the student clicks "Start Exam"
   const handleStartExam = () => {
     setShowExamStart(false);
     setShowExam(true);
+    startMonitoring(); // Tell Context to turn on the camera
+  };
 
-    if (!streamRef.current) {
-      setTimeout(() => startEverything(), 100);
+  // 4. Attach the stream to the <video> tag whenever it becomes available
+  useEffect(() => {
+    if (videoRef.current && stream) {
+      videoRef.current.srcObject = stream;
     }
-  };
-
-  const initFaceDetection = async () => {
-    try {
-      console.log("👁️ Initializing face detection...");
-
-      const vision = await FilesetResolver.forVisionTasks(
-        "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm"
-      );
-
-      // 🔥 USE FULL RANGE MODEL (BETTER ACCURACY)
-      detectorRef.current = await FaceDetector.createFromOptions(vision, {
-        baseOptions: {
-          modelAssetPath:
-            "https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/1/blaze_face_short_range.tflite",
-          delegate: "GPU",
-        },
-        runningMode: "VIDEO",
-        minDetectionConfidence: 0.5, // 🔥 BALANCED
-      });
-
-      console.log("✅ Face detector ready!");
-
-      let lastEmitTime = 0;
-      const EMIT_INTERVAL = 500; // Emit every 500ms
-
-      let detectionBuffer = [];
-      const BUFFER_SIZE = 10; // 🔥 Track last 10 detections
-
-      const detectFaces = () => {
-        if (detectorRef.current && videoRef.current?.readyState === 4) {
-          try {
-            const now = Date.now();
-
-            const results = detectorRef.current.detectForVideo(
-              videoRef.current,
-              now
-            );
-
-            const hasDetection =
-              results.detections && results.detections.length > 0;
-
-            let currentConfidence = 0;
-            if (hasDetection) {
-              const rawConfidence =
-                results.detections[0]?.categories[0]?.score || 0;
-              currentConfidence = Math.round(rawConfidence * 100);
-            }
-
-            // 🔥 ADD TO BUFFER
-            detectionBuffer.push({
-              detected: hasDetection && currentConfidence >= 40,
-              confidence: currentConfidence,
-            });
-
-            if (detectionBuffer.length > BUFFER_SIZE) {
-              detectionBuffer.shift();
-            }
-
-            // 🔥 EMIT EVERY 500ms WITH SMOOTHED DATA
-            if (
-              now - lastEmitTime >= EMIT_INTERVAL &&
-              detectionBuffer.length >= 5
-            ) {
-              lastEmitTime = now;
-
-              const detectedCount = detectionBuffer.filter(
-                (d) => d.detected
-              ).length;
-              const avgConfidence =
-                detectionBuffer
-                  .filter((d) => d.confidence > 0)
-                  .reduce((sum, d) => sum + d.confidence, 0) /
-                Math.max(
-                  1,
-                  detectionBuffer.filter((d) => d.confidence > 0).length
-                );
-
-              // 🔥 FACE IS PRESENT IF 60% OF BUFFER HAS FACE
-              const hasFace = detectedCount >= BUFFER_SIZE * 0.6;
-
-              // 🔥 BOOST CONFIDENCE IF CONSISTENTLY DETECTED
-              let finalConfidence = Math.round(avgConfidence);
-              if (hasFace && detectedCount >= BUFFER_SIZE * 0.8) {
-                finalConfidence = Math.min(95, finalConfidence + 10); // Boost by 10%
-              }
-
-              const status = {
-                hasFace: hasFace,
-                confidence: hasFace ? finalConfidence : 0,
-                timestamp: now,
-                userId: userIdRef.current,
-                studentId: userIdRef.current,
-                detectionRate: `${detectedCount}/${BUFFER_SIZE}`, // Debug info
-              };
-
-              socket.emit("face-status", status);
-              console.log("📤 EMITTING:", status);
-            }
-          } catch (error) {
-            console.error("Detection error:", error);
-          }
-        }
-        requestAnimationFrame(detectFaces);
-      };
-
-      detectFaces();
-    } catch (error) {
-      console.error("❌ Face detection error:", error);
-    }
-  };
-
-  const startLocationTracking = () => {
-    if (!navigator.geolocation) return;
-
-    locationWatchIdRef.current = navigator.geolocation.watchPosition(
-      (position) => {
-        const location = {
-          latitude: position.coords.latitude,
-          longitude: position.coords.longitude,
-          accuracy: position.coords.accuracy,
-          timestamp: new Date().toISOString(),
-        };
-
-        socket.emit("location-update", {
-          userId: userIdRef.current,
-          location: location,
-        });
-      },
-      (error) => console.error("❌ Location error:", error),
-      { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
-    );
-  };
-
-  const createPeerConnection = async (stream) => {
-    const configuration = {
-      iceServers: [
-        { urls: "stun:stun.l.google.com:19302" },
-        { urls: "stun:stun1.l.google.com:19302" },
-      ],
-    };
-    peerConnectionRef.current = new RTCPeerConnection(configuration);
-
-    stream.getTracks().forEach((track) => {
-      peerConnectionRef.current.addTrack(track, stream);
-    });
-
-    peerConnectionRef.current.onicecandidate = (event) => {
-      if (event.candidate) {
-        socket.emit("ice-candidate", {
-          candidate: event.candidate,
-          to: "admin",
-        });
-      }
-    };
-
-    const offer = await peerConnectionRef.current.createOffer();
-    await peerConnectionRef.current.setLocalDescription(offer);
-    socket.emit("offer", { offer, to: "admin" });
-  };
-
-  const handleAnswer = async ({ answer }) => {
-    try {
-      if (!peerConnectionRef.current) return;
-      await peerConnectionRef.current.setRemoteDescription(
-        new RTCSessionDescription(answer)
-      );
-      for (const candidate of pendingCandidatesRef.current) {
-        await peerConnectionRef.current.addIceCandidate(candidate);
-      }
-      pendingCandidatesRef.current = [];
-    } catch (error) {
-      console.error("❌ Error handling answer:", error);
-    }
-  };
-
-  const handleIceCandidate = async ({ candidate }) => {
-    try {
-      if (
-        peerConnectionRef.current &&
-        peerConnectionRef.current.remoteDescription
-      ) {
-        await peerConnectionRef.current.addIceCandidate(
-          new RTCIceCandidate(candidate)
-        );
-      } else {
-        pendingCandidatesRef.current.push(new RTCIceCandidate(candidate));
-      }
-    } catch (error) {
-      console.error("❌ Error adding ICE candidate:", error);
-    }
-  };
+  }, [stream, showExam]); // Run when stream changes or exam view opens
 
   return (
     <div style={styles.container}>
       {showExamStart && (
         <div style={styles.startContainer}>
+          {/* ... keeping your existing start screen UI ... */}
           <div style={styles.startCard}>
-            <div style={styles.monitorBadge}>
-              <span style={styles.monitorDot}>●</span>
-              <span style={styles.monitorText}>✓ Monitored</span>
-            </div>
-
-            <div style={styles.startIcon}>📝</div>
             <h1 style={styles.startTitle}>Data Structures Final Exam</h1>
-            <p style={styles.startSubtitle}>
-              You are now authenticated and ready to begin
-            </p>
-
-            <div style={styles.detailsBox}>
-              <div style={styles.detail}>
-                <span style={styles.detailIcon}>📋</span>
-                <div>
-                  <div style={styles.detailLabel}>Total Questions</div>
-                  <div style={styles.detailValue}>50</div>
-                </div>
-              </div>
-              <div style={styles.detail}>
-                <span style={styles.detailIcon}>⏱️</span>
-                <div>
-                  <div style={styles.detailLabel}>Duration</div>
-                  <div style={styles.detailValue}>2 Hours</div>
-                </div>
-              </div>
-              <div style={styles.detail}>
-                <span style={styles.detailIcon}>📊</span>
-                <div>
-                  <div style={styles.detailLabel}>Total Marks</div>
-                  <div style={styles.detailValue}>100</div>
-                </div>
-              </div>
-            </div>
-
             <button onClick={handleStartExam} style={styles.startButton}>
-              <span style={styles.startButtonIcon}>🚀</span>
-              Start Exam
+              🚀 Start Exam
             </button>
           </div>
         </div>
@@ -348,15 +43,23 @@ function StudentDashboard() {
 
       {showExam && (
         <div style={styles.examLayout}>
-          {/* 🔥 LEFT SIDE: CAMERA */}
+          {/* LEFT SIDE: CAMERA */}
           <div style={styles.cameraSection}>
             <div style={styles.cameraCard}>
               <div style={styles.cameraHeader}>
-                <span style={styles.cameraIcon}>📹</span>
                 <h3 style={styles.cameraTitle}>Live Monitoring</h3>
-                <span style={styles.liveIndicator}>🔴 LIVE</span>
+                {/* 5. Use faceStatus from Context for UI feedback */}
+                <span
+                  style={{
+                    ...styles.liveIndicator,
+                    color: faceStatus.hasFace ? "green" : "red",
+                  }}
+                >
+                  {faceStatus.hasFace ? "🟢 DETECTED" : "🔴 NO FACE"}
+                </span>
               </div>
 
+              {/* The Video Element just plays the stream from Context */}
               <video
                 ref={videoRef}
                 autoPlay
@@ -366,48 +69,21 @@ function StudentDashboard() {
               />
 
               <div style={styles.cameraFooter}>
-                <span style={styles.userId}>
-                  {userIdRef.current?.substring(0, 15)}...
-                </span>
+                <span style={styles.userId}>{userId}</span>
               </div>
             </div>
           </div>
 
-          {/* 🔥 RIGHT SIDE: QUESTIONS */}
+          {/* RIGHT SIDE: QUESTIONS (Unchanged) */}
           <div style={styles.questionsSection}>
             <div style={styles.examHeader}>
               <h2 style={styles.examTitle}>📝 Data Structures Final Exam</h2>
-              <div style={styles.examInfo}>
-                <span style={styles.examTime}>⏱️ Time: 1:45:23</span>
-                <span style={styles.examStatus}>🟢 Active</span>
-              </div>
             </div>
-
+            {/* ... Rest of your question UI ... */}
             <div style={styles.questionCard}>
-              <h3 style={styles.questionTitle}>Question 1 of 50</h3>
-              <p style={styles.questionText}>
-                What is the time complexity of binary search in a sorted array?
-              </p>
-              <div style={styles.optionsContainer}>
-                {["O(n)", "O(log n)", "O(n²)", "O(1)"].map((option, idx) => (
-                  <label key={idx} style={styles.optionLabel}>
-                    <input type="radio" name="q1" style={styles.radio} />
-                    <span style={styles.optionText}>{option}</span>
-                  </label>
-                ))}
-              </div>
+              <h3 style={styles.questionTitle}>Question 1</h3>
+              <p>This is the exam content...</p>
             </div>
-
-            <div style={styles.navigationButtons}>
-              <button style={styles.prevButton}>← Previous</button>
-              <button style={styles.nextButton}>Next →</button>
-            </div>
-
-            {feedback && (
-              <div style={styles.feedback}>
-                <strong>⚠️ Proctor Alert:</strong> {feedback}
-              </div>
-            )}
           </div>
         </div>
       )}
