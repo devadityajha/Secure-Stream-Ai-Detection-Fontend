@@ -1,316 +1,415 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import io from "socket.io-client";
-import { MapContainer, TileLayer, Marker } from "react-leaflet";
-import L from "leaflet";
-import "leaflet/dist/leaflet.css";
 
 const socket = io("http://localhost:3001");
 
 function AdminDashboard() {
-  const [users, setUsers] = useState([]);
-  const [studentStreams, setStudentStreams] = useState({});
-  const [studentsFaceStatus, setStudentsFaceStatus] = useState({});
-  const [userLocations, setUserLocations] = useState({});
-
-  const peerConnectionsRef = useRef({});
-  const hasRegistered = useRef(false);
+  const [students, setStudents] = useState([]);
+  const [streams, setStreams] = useState({});
+  const [faceData, setFaceData] = useState({});
+  const pcs = useRef({});
 
   useEffect(() => {
-    // Register admin ONCE
-    if (!hasRegistered.current) {
-      console.log("👨‍💼 ADMIN: Registering");
-      socket.emit("register-admin");
-      hasRegistered.current = true;
-    }
+    socket.emit("register-admin");
+    socket.on("users-updated", (list) =>
+      setStudents(list.filter((u) => u.type === "user"))
+    );
+    socket.on("face-status", (data) =>
+      setFaceData((prev) => ({ ...prev, [data.userId]: data }))
+    );
 
-    // USERS UPDATED
-    socket.on("users-updated", (list) => {
-      console.log("👥 ADMIN: Users updated:", list.length);
-      const students = list.filter((u) => u.type === "user");
-      setUsers(students);
-    });
-
-    // FACE STATUS
-    socket.on("face-status", (data) => {
-      setStudentsFaceStatus((prev) => ({
-        ...prev,
-        [data.userId]: { hasFace: data.hasFace, confidence: data.confidence },
-      }));
-    });
-
-    // LOCATION UPDATE
-    socket.on("user-location-update", ({ userId, location }) => {
-      setUserLocations((prev) => ({ ...prev, [userId]: location }));
-    });
-
-    // OFFER HANDLER
     socket.on("offer", async ({ offer, from }) => {
-      console.log("📨 ADMIN: Offer from:", from);
-
-      // Close old connection
-      if (peerConnectionsRef.current[from]) {
-        console.log("🔄 ADMIN: Closing old connection for:", from);
-        peerConnectionsRef.current[from].close();
-      }
-
-      // Create new peer connection
+      if (pcs.current[from]) pcs.current[from].close();
       const pc = new RTCPeerConnection({
         iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
       });
-
-      peerConnectionsRef.current[from] = pc;
-
-      // ON TRACK
-      pc.ontrack = (event) => {
-        console.log("📹 ADMIN: Track from:", from);
-        if (event.streams && event.streams[0]) {
-          setStudentStreams((prev) => {
-            const updated = { ...prev, [from]: event.streams[0] };
-            console.log("✅ ADMIN: Stream set for:", from);
-            return updated;
-          });
-        }
-      };
-
-      // ON ICE CANDIDATE
-      pc.onicecandidate = (event) => {
-        if (event.candidate) {
-          socket.emit("ice-candidate", {
-            candidate: event.candidate,
-            to: from,
-            from: "admin",
-          });
-        }
-      };
-
-      // CONNECTION STATE
-      pc.onconnectionstatechange = () => {
-        console.log("🔌 ADMIN:", from, "→", pc.connectionState);
-        if (
-          pc.connectionState === "failed" ||
-          pc.connectionState === "disconnected"
-        ) {
-          setStudentStreams((prev) => {
-            const updated = { ...prev };
-            delete updated[from];
-            return updated;
-          });
-        }
-      };
-
-      try {
-        await pc.setRemoteDescription(new RTCSessionDescription(offer));
-        console.log("✅ ADMIN: Remote desc set for:", from);
-
-        const answer = await pc.createAnswer();
-        await pc.setLocalDescription(answer);
-        console.log("✅ ADMIN: Answer created for:", from);
-
-        socket.emit("answer", { answer, to: from });
-        console.log("✅ ADMIN: Answer sent to:", from);
-      } catch (error) {
-        console.error("❌ ADMIN: Error for", from, ":", error);
-      }
+      pcs.current[from] = pc;
+      pc.ontrack = (e) =>
+        setStreams((prev) => ({ ...prev, [from]: e.streams[0] }));
+      pc.onicecandidate = (e) =>
+        e.candidate &&
+        socket.emit("ice-candidate", {
+          candidate: e.candidate,
+          to: from,
+          from: "admin",
+        });
+      await pc.setRemoteDescription(new RTCSessionDescription(offer));
+      const answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
+      socket.emit("answer", { answer, to: from });
     });
-
-    // ICE CANDIDATE
-    socket.on("ice-candidate", async ({ candidate, from }) => {
-      if (peerConnectionsRef.current[from]) {
-        try {
-          await peerConnectionsRef.current[from].addIceCandidate(
-            new RTCIceCandidate(candidate)
-          );
-        } catch (error) {
-          console.error("❌ ADMIN: ICE error:", error);
-        }
-      }
-    });
-
-    // CLEANUP
-    return () => {
-      console.log("🧹 ADMIN: Cleaning up listeners");
-      socket.off("users-updated");
-      socket.off("face-status");
-      socket.off("user-location-update");
-      socket.off("offer");
-      socket.off("ice-candidate");
-    };
-  }, []); // ← EMPTY DEPENDENCY ARRAY!
-
-  // VideoPlayer Component
-  const VideoPlayer = ({ stream, studentId }) => {
-    const videoRef = useRef();
-
-    useEffect(() => {
-      if (videoRef.current && stream) {
-        videoRef.current.srcObject = stream;
-      }
-    }, [stream]);
-
-    return (
-      <video
-        ref={videoRef}
-        autoPlay
-        playsInline
-        muted
-        style={{
-          width: "100%",
-          height: "100%",
-          objectFit: "cover",
-        }}
-      />
-    );
-  };
+    return () => socket.off();
+  }, []);
 
   return (
-    <div style={{ display: "flex", height: "100vh" }}>
-      {/* Sidebar */}
-      <div style={{ width: "250px", background: "#2c3e50", padding: "20px" }}>
-        <h2 style={{ color: "white" }}>Monitor List</h2>
-        {users.map((u) => (
-          <div
-            key={u.userId}
-            style={{
-              padding: "10px",
-              background: "#34495e",
-              margin: "10px 0",
-              borderRadius: "5px",
-              color: "white",
-            }}
-          >
-            {u.userId.substring(0, 12)}...
-            {studentsFaceStatus[u.userId]?.hasFace ? " 🟢" : " 🔴"}
+    <div style={styles.layout}>
+      {/* SIDEBAR */}
+      <aside style={styles.sidebar}>
+        <div style={styles.brandGroup}>
+          <div style={styles.brandLogo}>🎓</div>
+          <div>
+            <div style={styles.brandTitle}>SecureStream AI</div>
+            <div style={styles.brandSub}>Proctor Console</div>
           </div>
-        ))}
-      </div>
+        </div>
 
-      {/* Main Content */}
-      <div style={{ flex: 1, padding: "20px", overflowY: "scroll" }}>
-        <h1>Admin Dashboard</h1>
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fill, minmax(400px, 1fr))",
-            gap: "20px",
-          }}
-        >
-          {users.map((user) => {
-            const stream = studentStreams[user.userId];
-            const faceData = studentsFaceStatus[user.userId];
-            const location = userLocations[user.userId];
+        <div style={styles.statCards}>
+          <div style={styles.statBox}>
+            <span>👥</span>
+            <div>
+              <div style={styles.statNum}>{students.length}</div>
+              <div style={styles.statLabel}>Students</div>
+            </div>
+          </div>
+          <div style={styles.statBox}>
+            <span>📸</span>
+            <div>
+              <div style={styles.statNum}>{Object.keys(streams).length}</div>
+              <div style={styles.statLabel}>Monitored</div>
+            </div>
+          </div>
+        </div>
 
+        <div style={styles.sectionTitle}>👁️ FACE MONITORING</div>
+        <div style={styles.scrollList}>
+          {students.map((s) => {
+            const conf = faceData[s.userId]?.confidence || 0;
             return (
-              <div
-                key={user.userId}
-                style={{
-                  border: "1px solid #ddd",
-                  borderRadius: "10px",
-                  overflow: "hidden",
-                  background: "white",
-                }}
-              >
-                {/* Header */}
-                <div
-                  style={{
-                    padding: "10px",
-                    background: "#f8f9fa",
-                    display: "flex",
-                    justifyContent: "space-between",
-                  }}
-                >
-                  <div>{user.userId}</div>
+              <div key={s.userId} style={styles.navItem}>
+                <div style={styles.navMain}>
+                  <div style={styles.navAvatar}>👤</div>
+                  <div style={styles.navName}>{s.userId.slice(0, 10)}...</div>
                   <div
                     style={{
-                      padding: "5px 12px",
-                      borderRadius: "20px",
-                      color: "white",
-                      background: faceData?.hasFace ? "#4caf50" : "#f44336",
+                      ...styles.navStatus,
+                      color: faceData[s.userId]?.hasFace
+                        ? "#4ade80"
+                        : "#fb7185",
                     }}
                   >
-                    {faceData?.hasFace
-                      ? `✅ ${faceData.confidence}%`
-                      : "🚨 NO FACE"}
+                    {faceData[s.userId]?.hasFace ? `${conf}%` : "🚨 FLAG"}
                   </div>
                 </div>
-
-                {/* Video */}
-                <div
-                  style={{
-                    position: "relative",
-                    paddingTop: "56.25%",
-                    background: "#000",
-                  }}
-                >
+                <div style={styles.listProgressBg}>
                   <div
                     style={{
-                      position: "absolute",
-                      top: 0,
-                      left: 0,
-                      width: "100%",
-                      height: "100%",
+                      ...styles.listProgressFill,
+                      width: `${conf}%`,
+                      backgroundColor: conf > 50 ? "#4ade80" : "#fb7185",
                     }}
-                  >
-                    {stream ? (
-                      <VideoPlayer stream={stream} studentId={user.userId} />
-                    ) : (
-                      <div
-                        style={{
-                          display: "flex",
-                          flexDirection: "column",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          height: "100%",
-                          color: "#888",
-                        }}
-                      >
-                        <div
-                          style={{
-                            width: "40px",
-                            height: "40px",
-                            border: "4px solid rgba(255,255,255,0.2)",
-                            borderTop: "4px solid rgba(255,255,255,0.6)",
-                            borderRadius: "50%",
-                            animation: "spin 1s linear infinite",
-                          }}
-                        ></div>
-                        <p>Waiting for {user.userId.substring(0, 15)}...</p>
-                        <small style={{ color: "#666" }}>
-                          Student needs to click "Start Exam"
-                        </small>
-                      </div>
-                    )}
-                  </div>
+                  />
                 </div>
-
-                {/* Map */}
-                {location && (
-                  <div style={{ padding: "10px" }}>
-                    <MapContainer
-                      center={[location.latitude, location.longitude]}
-                      zoom={15}
-                      style={{ height: "200px", borderRadius: "8px" }}
-                    >
-                      <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-                      <Marker
-                        position={[location.latitude, location.longitude]}
-                      />
-                    </MapContainer>
-                  </div>
-                )}
               </div>
             );
           })}
         </div>
-      </div>
 
-      <style>{`
-        @keyframes spin {
-          0% { transform: rotate(0deg); }
-          100% { transform: rotate(360deg); }
-        }
-      `}</style>
+        <div style={styles.alertBox}>
+          <div style={styles.sectionTitle}>🚩 SEND ALERT</div>
+          <select style={styles.input}>
+            <option>Select Student...</option>
+          </select>
+          <textarea
+            style={{ ...styles.input, height: "60px", marginTop: "8px" }}
+            placeholder="Enter message..."
+          />
+          <button style={styles.btnAlert}>📩 Send Alert</button>
+        </div>
+      </aside>
+
+      {/* MAIN CONTENT AREA */}
+      <main style={styles.main}>
+        <div style={styles.topHeader}>
+          <div>
+            <h1 style={styles.mainHeading}>Monitoring Dashboard</h1>
+            <p style={styles.mainSubHeading}>Real-time surveillance console</p>
+          </div>
+          <div style={styles.liveTag}>● LIVE</div>
+        </div>
+
+        <div style={styles.grid}>
+          {students.map((user) => (
+            <StudentCard
+              key={user.userId}
+              user={user}
+              stream={streams[user.userId]}
+              face={faceData[user.userId]}
+            />
+          ))}
+        </div>
+      </main>
     </div>
   );
 }
+
+const StudentCard = ({ user, stream, face }) => {
+  const vRef = useRef();
+  const conf = face?.confidence || 0;
+  useEffect(() => {
+    if (vRef.current && stream) vRef.current.srcObject = stream;
+  }, [stream]);
+
+  return (
+    <div style={styles.card}>
+      <div style={styles.cardHeader}>
+        <div style={styles.cardInfo}>
+          <div style={styles.cardAvatar}>👤</div>
+          <div>
+            <div style={styles.cardName}>{user.userId.slice(0, 15)}...</div>
+            <div style={styles.cardActive}>Session Active</div>
+          </div>
+        </div>
+
+        {/* CIRCULAR PROGRESS INDICATOR */}
+        <div style={styles.circularContainer}>
+          <svg width="40" height="40" viewBox="0 0 40 40">
+            <circle
+              cx="20"
+              cy="20"
+              r="16"
+              fill="none"
+              stroke="#f1f5f9"
+              strokeWidth="4"
+            />
+            <circle
+              cx="20"
+              cy="20"
+              r="16"
+              fill="none"
+              stroke={conf > 70 ? "#4ade80" : "#fb7185"}
+              strokeWidth="4"
+              strokeDasharray="100.48"
+              strokeDashoffset={100.48 - (100.48 * conf) / 100}
+              strokeLinecap="round"
+              transform="rotate(-90 20 20)"
+              style={{ transition: "stroke-dashoffset 0.5s ease" }}
+            />
+            <text
+              x="20"
+              y="24"
+              fontSize="8"
+              fontWeight="800"
+              textAnchor="middle"
+              fill="#475569"
+            >
+              {conf}%
+            </text>
+          </svg>
+        </div>
+      </div>
+
+      <div style={styles.videoContainer}>
+        <div style={styles.videoHeader}>
+          <span>📸 Live Camera Feed</span>
+          <span style={styles.livePulse}>● LIVE</span>
+        </div>
+        <div style={styles.videoContent}>
+          {stream ? (
+            <video ref={vRef} autoPlay playsInline muted style={styles.video} />
+          ) : (
+            <div style={styles.loader}>Secure link pending...</div>
+          )}
+        </div>
+      </div>
+
+      <button style={styles.quickBtn}>📩 Send Quick Alert</button>
+    </div>
+  );
+};
+
+const styles = {
+  layout: { display: "flex", height: "100vh", background: "#4e5ba6" }, // BACKGROUND MATCHED TO 3RD SCREENSHOT (DEEP BLUE/PURPLE)
+  sidebar: {
+    width: "300px",
+    background: "#7c89df",
+    padding: "30px 20px",
+    color: "white",
+    display: "flex",
+    flexDirection: "column",
+  },
+  brandGroup: {
+    display: "flex",
+    alignItems: "center",
+    gap: "15px",
+    marginBottom: "35px",
+  },
+  brandLogo: {
+    fontSize: "30px",
+    background: "rgba(255,255,255,0.2)",
+    borderRadius: "12px",
+    padding: "6px",
+  },
+  brandTitle: { fontSize: "18px", fontWeight: "900" },
+  brandSub: { fontSize: "11px", opacity: 0.8 },
+  statCards: { display: "flex", gap: "12px", marginBottom: "20px" },
+  statBox: {
+    flex: 1,
+    background: "rgba(255,255,255,0.22)",
+    padding: "12px",
+    borderRadius: "15px",
+    display: "flex",
+    gap: "10px",
+    alignItems: "center",
+  },
+  statNum: { fontSize: "18px", fontWeight: "900" },
+  statLabel: { fontSize: "10px", fontWeight: "600" },
+  sectionTitle: {
+    fontSize: "11px",
+    fontWeight: "900",
+    opacity: 0.8,
+    marginBottom: "12px",
+  },
+  scrollList: {
+    flex: 1,
+    overflowY: "auto",
+    display: "flex",
+    flexDirection: "column",
+    gap: "12px",
+  },
+  navItem: {
+    background: "rgba(255,255,255,0.18)",
+    padding: "12px",
+    borderRadius: "14px",
+  },
+  navMain: {
+    display: "flex",
+    gap: "12px",
+    alignItems: "center",
+    marginBottom: "8px",
+  },
+  navAvatar: {
+    background: "rgba(255,255,255,0.25)",
+    borderRadius: "50%",
+    width: "32px",
+    height: "32px",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  navName: { fontSize: "12px", fontWeight: "800", flex: 1 },
+  navStatus: { fontSize: "10px", fontWeight: "900" },
+  listProgressBg: {
+    height: "4px",
+    background: "rgba(255,255,255,0.2)",
+    borderRadius: "10px",
+    overflow: "hidden",
+  },
+  listProgressFill: { height: "100%", transition: "width 0.3s ease" },
+  alertBox: {
+    marginTop: "20px",
+    background: "rgba(255,255,255,0.12)",
+    padding: "15px",
+    borderRadius: "20px",
+  },
+  input: {
+    width: "100%",
+    padding: "10px",
+    borderRadius: "10px",
+    border: "none",
+    fontSize: "12px",
+  },
+  btnAlert: {
+    width: "100%",
+    background: "#ff4757",
+    color: "white",
+    border: "none",
+    padding: "12px",
+    borderRadius: "12px",
+    fontWeight: "900",
+    marginTop: "10px",
+    cursor: "pointer",
+  },
+
+  main: { flex: 1, padding: "35px 45px", overflowY: "auto" },
+  topHeader: {
+    background: "white",
+    padding: "25px 45px",
+    borderRadius: "25px",
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: "35px",
+  },
+  mainHeading: { fontSize: "30px", fontWeight: "900", color: "#2d3436" },
+  mainSubHeading: { fontSize: "14px", color: "#636e72" },
+  liveTag: {
+    color: "#2ecc71",
+    border: "1.5px solid #2ecc71",
+    padding: "6px 20px",
+    borderRadius: "25px",
+    fontSize: "12px",
+    fontWeight: "900",
+  },
+
+  // GRID LAYOUT FIXED
+  grid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fill, minmax(350px, 1fr))",
+    gap: "30px",
+  },
+  card: {
+    background: "white",
+    borderRadius: "30px",
+    padding: "22px",
+    boxShadow: "0 10px 40px rgba(0,0,0,0.1)",
+  },
+  cardHeader: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: "20px",
+  },
+  cardInfo: { display: "flex", alignItems: "center", gap: "12px" },
+  cardAvatar: {
+    background: "#7c89df",
+    color: "white",
+    width: "38px",
+    height: "38px",
+    borderRadius: "12px",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  cardName: { fontSize: "15px", fontWeight: "900" },
+  cardActive: { fontSize: "11px", color: "#b2bec3" },
+
+  circularContainer: { width: "40px", height: "40px" },
+  videoContainer: {
+    borderRadius: "20px",
+    overflow: "hidden",
+    border: "1px solid #f1f2f6",
+    marginBottom: "20px",
+  },
+  videoHeader: {
+    padding: "12px 20px",
+    background: "#fcfcfd",
+    display: "flex",
+    justifyContent: "space-between",
+    fontSize: "11px",
+    fontWeight: "900",
+    color: "#636e72",
+  },
+  livePulse: { color: "#ff4757" },
+  videoContent: { height: "200px", background: "#000" },
+  video: { width: "100%", height: "100%", objectFit: "cover" },
+  quickBtn: {
+    width: "100%",
+    background: "#f39c12",
+    color: "white",
+    border: "none",
+    padding: "14px",
+    borderRadius: "16px",
+    fontWeight: "900",
+    cursor: "pointer",
+  },
+  loader: {
+    height: "100%",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    color: "#636e72",
+    fontSize: "12px",
+  },
+};
 
 export default AdminDashboard;
