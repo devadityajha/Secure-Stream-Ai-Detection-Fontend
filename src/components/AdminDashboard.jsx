@@ -7,16 +7,43 @@ function AdminDashboard() {
   const [students, setStudents] = useState([]);
   const [streams, setStreams] = useState({});
   const [faceData, setFaceData] = useState({});
+  const [tabSwitchData, setTabSwitchData] = useState({});
+  const [windowSwitchData, setWindowSwitchData] = useState({}); // New State
+
   const pcs = useRef({});
 
   useEffect(() => {
     socket.emit("register-admin");
-    socket.on("users-updated", (list) =>
-      setStudents(list.filter((u) => u.type === "user"))
-    );
-    socket.on("face-status", (data) =>
-      setFaceData((prev) => ({ ...prev, [data.userId]: data }))
-    );
+
+    socket.on("users-updated", (list) => {
+      setStudents(list.filter((u) => u.type === "user"));
+    });
+
+    socket.on("face-status", (data) => {
+      setFaceData((prev) => ({ ...prev, [data.userId]: data }));
+    });
+
+    // Tab Switch Listener
+    socket.on("tab-switch", (data) => {
+      setTabSwitchData((prev) => ({
+        ...prev,
+        [data.userId]: {
+          count: data.count,
+          lastSwitch: Date.now(),
+        },
+      }));
+    });
+
+    // Window Switch Listener
+    socket.on("window-switch", (data) => {
+      setWindowSwitchData((prev) => ({
+        ...prev,
+        [data.userId]: {
+          count: data.count,
+          lastSwitch: Date.now(),
+        },
+      }));
+    });
 
     socket.on("offer", async ({ offer, from }) => {
       if (pcs.current[from]) pcs.current[from].close();
@@ -38,12 +65,18 @@ function AdminDashboard() {
       await pc.setLocalDescription(answer);
       socket.emit("answer", { answer, to: from });
     });
-    return () => socket.off();
+
+    return () => {
+      socket.off("users-updated");
+      socket.off("face-status");
+      socket.off("tab-switch");
+      socket.off("window-switch");
+      socket.off("offer");
+    };
   }, []);
 
   return (
     <div style={styles.layout}>
-      {/* SIDEBAR */}
       <aside style={styles.sidebar}>
         <div style={styles.brandGroup}>
           <div style={styles.brandLogo}>🎓</div>
@@ -55,14 +88,14 @@ function AdminDashboard() {
 
         <div style={styles.statCards}>
           <div style={styles.statBox}>
-            <span>👥</span>
+            <span style={{ fontSize: "24px" }}>👥</span>
             <div>
               <div style={styles.statNum}>{students.length}</div>
               <div style={styles.statLabel}>Students</div>
             </div>
           </div>
           <div style={styles.statBox}>
-            <span>📸</span>
+            <span style={{ fontSize: "24px" }}>📸</span>
             <div>
               <div style={styles.statNum}>{Object.keys(streams).length}</div>
               <div style={styles.statLabel}>Monitored</div>
@@ -87,15 +120,20 @@ function AdminDashboard() {
                         : "#fb7185",
                     }}
                   >
-                    {faceData[s.userId]?.hasFace ? `${conf}%` : "🚨 FLAG"}
+                    {faceData[s.userId]?.hasFace ? `${conf}%` : "🚨"}
                   </div>
                 </div>
-                <div style={styles.listProgressBg}>
+                <div style={styles.barBg}>
                   <div
                     style={{
-                      ...styles.listProgressFill,
+                      height: "100%",
                       width: `${conf}%`,
-                      backgroundColor: conf > 50 ? "#4ade80" : "#fb7185",
+                      background:
+                        conf > 50
+                          ? "linear-gradient(90deg, #4ade80, #22c55e)"
+                          : "linear-gradient(90deg, #fb7185, #ef4444)",
+                      borderRadius: "10px",
+                      transition: "width 0.3s ease",
                     }}
                   />
                 </div>
@@ -103,21 +141,8 @@ function AdminDashboard() {
             );
           })}
         </div>
-
-        <div style={styles.alertBox}>
-          <div style={styles.sectionTitle}>🚩 SEND ALERT</div>
-          <select style={styles.input}>
-            <option>Select Student...</option>
-          </select>
-          <textarea
-            style={{ ...styles.input, height: "60px", marginTop: "8px" }}
-            placeholder="Enter message..."
-          />
-          <button style={styles.btnAlert}>📩 Send Alert</button>
-        </div>
       </aside>
 
-      {/* MAIN CONTENT AREA */}
       <main style={styles.main}>
         <div style={styles.topHeader}>
           <div>
@@ -134,6 +159,8 @@ function AdminDashboard() {
               user={user}
               stream={streams[user.userId]}
               face={faceData[user.userId]}
+              tabData={tabSwitchData[user.userId]}
+              windowData={windowSwitchData[user.userId]}
             />
           ))}
         </div>
@@ -142,9 +169,14 @@ function AdminDashboard() {
   );
 }
 
-const StudentCard = ({ user, stream, face }) => {
+const StudentCard = ({ user, stream, face, tabData, windowData }) => {
   const vRef = useRef();
   const conf = face?.confidence || 0;
+  const tabCount = tabData?.count || 0;
+  const windowCount = windowData?.count || 0;
+  const isRecentTab = tabData && Date.now() - tabData.lastSwitch < 2000;
+  const isRecentWin = windowData && Date.now() - windowData.lastSwitch < 2000;
+
   useEffect(() => {
     if (vRef.current && stream) vRef.current.srcObject = stream;
   }, [stream]);
@@ -156,45 +188,136 @@ const StudentCard = ({ user, stream, face }) => {
           <div style={styles.cardAvatar}>👤</div>
           <div>
             <div style={styles.cardName}>{user.userId.slice(0, 15)}...</div>
-            <div style={styles.cardActive}>Session Active</div>
+            <div style={styles.sessionStatus}>Session Active</div>
           </div>
         </div>
 
-        {/* CIRCULAR PROGRESS INDICATOR */}
-        <div style={styles.circularContainer}>
-          <svg width="40" height="40" viewBox="0 0 40 40">
-            <circle
-              cx="20"
-              cy="20"
-              r="16"
-              fill="none"
-              stroke="#f1f5f9"
-              strokeWidth="4"
-            />
-            <circle
-              cx="20"
-              cy="20"
-              r="16"
-              fill="none"
-              stroke={conf > 70 ? "#4ade80" : "#fb7185"}
-              strokeWidth="4"
-              strokeDasharray="100.48"
-              strokeDashoffset={100.48 - (100.48 * conf) / 100}
-              strokeLinecap="round"
-              transform="rotate(-90 20 20)"
-              style={{ transition: "stroke-dashoffset 0.5s ease" }}
-            />
-            <text
-              x="20"
-              y="24"
-              fontSize="8"
-              fontWeight="800"
-              textAnchor="middle"
-              fill="#475569"
-            >
-              {conf}%
-            </text>
-          </svg>
+        <div style={styles.badgeContainer}>
+          {/* FACE BADGE */}
+          <div style={styles.circularBadge}>
+            <svg width="45" height="45" viewBox="0 0 50 50">
+              <circle
+                cx="25"
+                cy="25"
+                r="20"
+                fill="none"
+                stroke="#f1f5f9"
+                strokeWidth="5"
+              />
+              <circle
+                cx="25"
+                cy="25"
+                r="20"
+                fill="none"
+                stroke={conf > 70 ? "#4ade80" : "#fb7185"}
+                strokeWidth="5"
+                strokeDasharray="125.6"
+                strokeDashoffset={125.6 - (125.6 * conf) / 100}
+                strokeLinecap="round"
+                transform="rotate(-90 25 25)"
+                style={{ transition: "stroke-dashoffset 0.5s ease" }}
+              />
+              <text
+                x="25"
+                y="29"
+                fontSize="10"
+                fontWeight="900"
+                textAnchor="middle"
+                fill="#475569"
+              >
+                {conf}%
+              </text>
+            </svg>
+            <div style={styles.badgeLabel}>Face</div>
+          </div>
+
+          {/* TAB BADGE */}
+          <div
+            style={{
+              ...styles.circularBadge,
+              animation: isRecentTab ? "badgePulse 0.8s ease-in-out" : "none",
+            }}
+          >
+            <svg width="45" height="45" viewBox="0 0 50 50">
+              <circle
+                cx="25"
+                cy="25"
+                r="20"
+                fill="none"
+                stroke="#f1f5f9"
+                strokeWidth="5"
+              />
+              <circle
+                cx="25"
+                cy="25"
+                r="20"
+                fill="none"
+                stroke={tabCount > 3 ? "#ff4757" : "#ffa502"}
+                strokeWidth="5"
+                strokeDasharray="125.6"
+                strokeDashoffset={
+                  125.6 - (125.6 * Math.min(tabCount * 10, 100)) / 100
+                }
+                strokeLinecap="round"
+                transform="rotate(-90 25 25)"
+              />
+              <text
+                x="25"
+                y="29"
+                fontSize="10"
+                fontWeight="900"
+                textAnchor="middle"
+                fill={tabCount > 0 ? "#ffa502" : "#94a3b8"}
+              >
+                {tabCount}x
+              </text>
+            </svg>
+            <div style={styles.badgeLabel}>Tabs</div>
+          </div>
+
+          {/* WINDOW BADGE */}
+          <div
+            style={{
+              ...styles.circularBadge,
+              animation: isRecentWin ? "badgePulse 0.8s ease-in-out" : "none",
+            }}
+          >
+            <svg width="45" height="45" viewBox="0 0 50 50">
+              <circle
+                cx="25"
+                cy="25"
+                r="20"
+                fill="none"
+                stroke="#f1f5f9"
+                strokeWidth="5"
+              />
+              <circle
+                cx="25"
+                cy="25"
+                r="20"
+                fill="none"
+                stroke={windowCount > 2 ? "#ef4444" : "#8b5cf6"}
+                strokeWidth="5"
+                strokeDasharray="125.6"
+                strokeDashoffset={
+                  125.6 - (125.6 * Math.min(windowCount * 20, 100)) / 100
+                }
+                strokeLinecap="round"
+                transform="rotate(-90 25 25)"
+              />
+              <text
+                x="25"
+                y="29"
+                fontSize="10"
+                fontWeight="900"
+                textAnchor="middle"
+                fill={windowCount > 0 ? "#8b5cf6" : "#94a3b8"}
+              >
+                {windowCount}x
+              </text>
+            </svg>
+            <div style={styles.badgeLabel}>Win</div>
+          </div>
         </div>
       </div>
 
@@ -207,18 +330,23 @@ const StudentCard = ({ user, stream, face }) => {
           {stream ? (
             <video ref={vRef} autoPlay playsInline muted style={styles.video} />
           ) : (
-            <div style={styles.loader}>Secure link pending...</div>
+            <div style={styles.loader}>Connecting...</div>
           )}
         </div>
       </div>
-
       <button style={styles.quickBtn}>📩 Send Quick Alert</button>
     </div>
   );
 };
 
 const styles = {
-  layout: { display: "flex", height: "100vh", background: "#4e5ba6" }, // BACKGROUND MATCHED TO 3RD SCREENSHOT (DEEP BLUE/PURPLE)
+  layout: {
+    display: "flex",
+    height: "100vh",
+    background: "#4e5ba6",
+    fontFamily:
+      "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+  },
   sidebar: {
     width: "300px",
     background: "#7c89df",
@@ -226,12 +354,13 @@ const styles = {
     color: "white",
     display: "flex",
     flexDirection: "column",
+    overflowY: "auto",
   },
   brandGroup: {
     display: "flex",
     alignItems: "center",
     gap: "15px",
-    marginBottom: "35px",
+    marginBottom: "30px",
   },
   brandLogo: {
     fontSize: "30px",
@@ -288,13 +417,12 @@ const styles = {
   },
   navName: { fontSize: "12px", fontWeight: "800", flex: 1 },
   navStatus: { fontSize: "10px", fontWeight: "900" },
-  listProgressBg: {
-    height: "4px",
-    background: "rgba(255,255,255,0.2)",
+  barBg: {
+    height: "6px",
+    background: "rgba(0,0,0,0.35)",
     borderRadius: "10px",
     overflow: "hidden",
   },
-  listProgressFill: { height: "100%", transition: "width 0.3s ease" },
   alertBox: {
     marginTop: "20px",
     background: "rgba(255,255,255,0.12)",
@@ -319,7 +447,6 @@ const styles = {
     marginTop: "10px",
     cursor: "pointer",
   },
-
   main: { flex: 1, padding: "35px 45px", overflowY: "auto" },
   topHeader: {
     background: "white",
@@ -330,7 +457,12 @@ const styles = {
     alignItems: "center",
     marginBottom: "35px",
   },
-  mainHeading: { fontSize: "30px", fontWeight: "900", color: "#2d3436" },
+  mainHeading: {
+    fontSize: "30px",
+    fontWeight: "900",
+    color: "#2d3436",
+    margin: 0,
+  },
   mainSubHeading: { fontSize: "14px", color: "#636e72" },
   liveTag: {
     color: "#2ecc71",
@@ -340,8 +472,6 @@ const styles = {
     fontSize: "12px",
     fontWeight: "900",
   },
-
-  // GRID LAYOUT FIXED
   grid: {
     display: "grid",
     gridTemplateColumns: "repeat(auto-fill, minmax(350px, 1fr))",
@@ -371,9 +501,24 @@ const styles = {
     justifyContent: "center",
   },
   cardName: { fontSize: "15px", fontWeight: "900" },
-  cardActive: { fontSize: "11px", color: "#b2bec3" },
-
-  circularContainer: { width: "40px", height: "40px" },
+  sessionStatus: { fontSize: "11px", color: "#b2bec3" },
+  badgeContainer: {
+    display: "flex",
+    gap: "12px",
+  },
+  circularBadge: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    gap: "4px",
+  },
+  badgeLabel: {
+    fontSize: "9px",
+    fontWeight: "700",
+    color: "#64748b",
+    textTransform: "uppercase",
+    letterSpacing: "0.5px",
+  },
   videoContainer: {
     borderRadius: "20px",
     overflow: "hidden",

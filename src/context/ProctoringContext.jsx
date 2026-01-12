@@ -9,7 +9,6 @@ import { FaceDetector, FilesetResolver } from "@mediapipe/tasks-vision";
 import io from "socket.io-client";
 
 export const ProctoringContext = createContext(null);
-
 const socket = io("http://localhost:3001");
 
 export const ProctoringProvider = ({ children }) => {
@@ -27,109 +26,86 @@ export const ProctoringProvider = ({ children }) => {
   const userIdRef = useRef(
     `student_${Math.random().toString(36).substr(2, 9)}`
   );
+  const tabSwitchCountRef = useRef(0);
 
   useEffect(() => {
-    // DON'T REGISTER ON MOUNT!
+    // ✅ TAB/WINDOW SWITCH DETECTION
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        tabSwitchCountRef.current += 1;
+        socket.emit("tab-switch", {
+          userId: userIdRef.current,
+          count: tabSwitchCountRef.current,
+          timestamp: Date.now(),
+        });
+        console.log("⚠️ TAB SWITCHED:", tabSwitchCountRef.current);
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
 
     socket.on("answer", async ({ answer }) => {
-      console.log("📨 STUDENT: Answer received");
-
-      if (!peerConnectionRef.current) {
-        console.error("❌ STUDENT: No peer connection!");
-        return;
-      }
-
-      try {
+      if (peerConnectionRef.current) {
         await peerConnectionRef.current.setRemoteDescription(
           new RTCSessionDescription(answer)
         );
-        console.log("✅ STUDENT: Remote description set");
-
-        for (const candidate of pendingCandidatesRef.current) {
-          await peerConnectionRef.current.addIceCandidate(candidate);
-        }
+        pendingCandidatesRef.current.forEach((c) =>
+          peerConnectionRef.current.addIceCandidate(c)
+        );
         pendingCandidatesRef.current = [];
-        console.log("✅ STUDENT: WebRTC complete");
-      } catch (error) {
-        console.error("❌ STUDENT: Error:", error);
       }
     });
 
     socket.on("ice-candidate", async ({ candidate }) => {
       const iceCandidate = new RTCIceCandidate(candidate);
-
       if (peerConnectionRef.current?.remoteDescription) {
-        try {
-          await peerConnectionRef.current.addIceCandidate(iceCandidate);
-          console.log("✅ STUDENT: ICE added");
-        } catch (error) {
-          console.error("❌ STUDENT: ICE error:", error);
-        }
+        await peerConnectionRef.current.addIceCandidate(iceCandidate);
       } else {
         pendingCandidatesRef.current.push(iceCandidate);
       }
     });
 
     return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
       stopMonitoring();
-      socket.off("answer");
-      socket.off("ice-candidate");
+      socket.off();
     };
   }, []);
 
   const initWebRTC = async (currentStream) => {
-    console.log("🎥 STUDENT: Initializing WebRTC");
-
     peerConnectionRef.current = new RTCPeerConnection({
       iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
     });
+    currentStream
+      .getTracks()
+      .forEach((track) =>
+        peerConnectionRef.current.addTrack(track, currentStream)
+      );
 
-    currentStream.getTracks().forEach((track) => {
-      peerConnectionRef.current.addTrack(track, currentStream);
-      console.log("✅ STUDENT: Track added:", track.kind);
-    });
-
-    peerConnectionRef.current.onicecandidate = (event) => {
-      if (event.candidate) {
+    peerConnectionRef.current.onicecandidate = (e) => {
+      if (e.candidate)
         socket.emit("ice-candidate", {
-          candidate: event.candidate,
+          candidate: e.candidate,
           to: "admin",
           from: userIdRef.current,
         });
-      }
-    };
-
-    peerConnectionRef.current.onconnectionstatechange = () => {
-      console.log(
-        "🔌 STUDENT: State:",
-        peerConnectionRef.current.connectionState
-      );
     };
 
     const offer = await peerConnectionRef.current.createOffer();
     await peerConnectionRef.current.setLocalDescription(offer);
-    console.log("📤 STUDENT: Sending offer");
     socket.emit("offer", { offer, to: "admin", from: userIdRef.current });
   };
 
   const startMonitoring = async () => {
     try {
-      // 🔥 REGISTER ONLY WHEN "START EXAM" IS CLICKED
       if (!hasRegistered.current) {
-        console.log("🆕 STUDENT: Registering with ID:", userIdRef.current);
         socket.emit("register-user", userIdRef.current);
         hasRegistered.current = true;
       }
-
-      console.log("📹 STUDENT: Starting...");
       const mediaStream = await navigator.mediaDevices.getUserMedia({
         video: { width: 640, height: 480 },
         audio: false,
       });
-
-      console.log("✅ STUDENT: Camera granted");
-      socket.emit("camera-permission-granted");
-
       setStream(mediaStream);
       videoRef.current.srcObject = mediaStream;
       videoRef.current.play();
@@ -137,7 +113,7 @@ export const ProctoringProvider = ({ children }) => {
       await initWebRTC(mediaStream);
       await initAI();
     } catch (err) {
-      console.error("❌ STUDENT: Failed:", err);
+      console.error("Setup failed:", err);
     }
   };
 
@@ -154,7 +130,6 @@ export const ProctoringProvider = ({ children }) => {
         },
         runningMode: "VIDEO",
       });
-      console.log("✅ STUDENT: AI ready");
     }
     setInterval(runDetection, 500);
   };
