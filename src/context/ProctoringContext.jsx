@@ -26,24 +26,8 @@ export const ProctoringProvider = ({ children }) => {
   const userIdRef = useRef(
     `student_${Math.random().toString(36).substr(2, 9)}`
   );
-  const tabSwitchCountRef = useRef(0);
 
   useEffect(() => {
-    // ✅ TAB/WINDOW SWITCH DETECTION
-    const handleVisibilityChange = () => {
-      if (document.hidden) {
-        tabSwitchCountRef.current += 1;
-        socket.emit("tab-switch", {
-          userId: userIdRef.current,
-          count: tabSwitchCountRef.current,
-          timestamp: Date.now(),
-        });
-        console.log("⚠️ TAB SWITCHED:", tabSwitchCountRef.current);
-      }
-    };
-
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-
     socket.on("answer", async ({ answer }) => {
       if (peerConnectionRef.current) {
         await peerConnectionRef.current.setRemoteDescription(
@@ -66,20 +50,25 @@ export const ProctoringProvider = ({ children }) => {
     });
 
     return () => {
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
       stopMonitoring();
       socket.off();
     };
   }, []);
 
-  const initWebRTC = async (currentStream) => {
+  const initWebRTC = async (camStream, screenStream) => {
     peerConnectionRef.current = new RTCPeerConnection({
       iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
     });
-    currentStream
+
+    // Add Camera Tracks
+    camStream
+      .getTracks()
+      .forEach((track) => peerConnectionRef.current.addTrack(track, camStream));
+    // Add Screen Tracks
+    screenStream
       .getTracks()
       .forEach((track) =>
-        peerConnectionRef.current.addTrack(track, currentStream)
+        peerConnectionRef.current.addTrack(track, screenStream)
       );
 
     peerConnectionRef.current.onicecandidate = (e) => {
@@ -102,18 +91,29 @@ export const ProctoringProvider = ({ children }) => {
         socket.emit("register-user", userIdRef.current);
         hasRegistered.current = true;
       }
+
+      // 1. Get Camera
       const mediaStream = await navigator.mediaDevices.getUserMedia({
         video: { width: 640, height: 480 },
         audio: false,
       });
+
+      // 2. Get Screen Share
+      const screenStream = await navigator.mediaDevices.getDisplayMedia({
+        video: true,
+      });
+
       setStream(mediaStream);
       videoRef.current.srcObject = mediaStream;
       videoRef.current.play();
 
-      await initWebRTC(mediaStream);
+      await initWebRTC(mediaStream, screenStream);
       await initAI();
     } catch (err) {
       console.error("Setup failed:", err);
+      alert(
+        "Both Camera and Screen Share permissions are required to start the exam."
+      );
     }
   };
 
@@ -144,7 +144,6 @@ export const ProctoringProvider = ({ children }) => {
       const confidence = hasFace
         ? Math.round(results.detections[0].categories[0].score * 100)
         : 0;
-
       const status = { userId: userIdRef.current, hasFace, confidence };
       setFaceStatus(status);
       socket.emit("face-status", status);

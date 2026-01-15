@@ -33,104 +33,54 @@ function StudentDashboard() {
   // REFS FOR TRACKING
   const tabSwitchCountRef = useRef(0);
   const windowSwitchCountRef = useRef(0);
+  const ssCountRef = useRef(0); // Tracking Screenshots
 
-  // 1. TRACK WINDOW SWITCHES (Clicking outside browser)
-  // useEffect(() => {
-  //   if (!userId) return;
+  const [canTrack, setCanTrack] = useState(false);
 
-  //   const handleWindowBlur = () => {
-  //     windowSwitchCountRef.current++;
-  //     console.log("🚫 WINDOW BLURRED! Count:", windowSwitchCountRef.current);
-  //     socket.emit("window-switch", {
-  //       userId: userId,
-  //       count: windowSwitchCountRef.current,
-  //     });
-  //   };
-
-  //   window.addEventListener("blur", handleWindowBlur);
-  //   return () => window.removeEventListener("blur", handleWindowBlur);
-  // }, [userId]);
-  //////////////////////////////////////////////////////////////////////////////////////////
-  // // 2. TRACK TAB SWITCHES (Changing tabs)
-  // useEffect(() => {
-  //   if (!userId) return;
-
-  //   const handleVisibilityChange = () => {
-  //     if (document.hidden) {
-  //       tabSwitchCountRef.current++;
-  //       console.log("⚠️ TAB HIDDEN! Count:", tabSwitchCountRef.current);
-  //       socket.emit("tab-switch", {
-  //         userId: userId,
-  //         count: tabSwitchCountRef.current,
-  //       });
-  //     }
-  //   };
-
-  //   document.addEventListener("visibilitychange", handleVisibilityChange);
-  //   return () =>
-  //     document.removeEventListener("visibilitychange", handleVisibilityChange);
-  // }, [userId]);
-
-  // 1. TRACK WINDOW SWITCHES (Only if tab is still visible)
-  // useEffect(() => {
-  //   if (!userId) return;
-
-  //   const handleWindowBlur = () => {
-  //     // Logic: Only count as Window Switch if the tab is still technically "visible"
-  //     // This prevents Tab Switches from being double-counted as Window Switches
-  //     if (document.visibilityState === "visible") {
-  //       windowSwitchCountRef.current++;
-  //       console.log(
-  //         "🚫 WINDOW FOCUS LOST (App/Window Switch)! Count:",
-  //         windowSwitchCountRef.current
-  //       );
-
-  //       socket.emit("window-switch", {
-  //         userId: userId,
-  //         count: windowSwitchCountRef.current,
-  //       });
-  //     }
-  //   };
-
-  //   window.addEventListener("blur", handleWindowBlur);
-  //   return () => window.removeEventListener("blur", handleWindowBlur);
-  // }, [userId]);
-
-  // // 2. TRACK TAB SWITCHES
-  // useEffect(() => {
-  //   if (!userId) return;
-
-  //   const handleVisibilityChange = () => {
-  //     if (document.hidden) {
-  //       tabSwitchCountRef.current++;
-  //       console.log("⚠️ TAB HIDDEN! Count:", tabSwitchCountRef.current);
-
-  //       socket.emit("tab-switch", {
-  //         userId: userId,
-  //         count: tabSwitchCountRef.current,
-  //       });
-  //     }
-  //   };
-
-  //   document.addEventListener("visibilitychange", handleVisibilityChange);
-  //   return () =>
-  //     document.removeEventListener("visibilitychange", handleVisibilityChange);
-  // }, [userId]);
-
-  // DEBUGGED TRACKING LOGIC
   useEffect(() => {
-    if (!userId) return;
+    if (!userId || !showExam) return;
+
+    // 1. GRACE PERIOD: Prevents starting at '1' due to permission popups
+    const gracePeriodTimeout = setTimeout(() => {
+      setCanTrack(true);
+      console.log("✅ Monitoring ACTIVE");
+    }, 3000);
 
     let blurTimeout = null;
 
+    // 2. SCREENSHOT HANDLER: Only triggers for Keyboard Shortcuts
+    const handleScreenshotEvent = () => {
+      if (!canTrack) return;
+      ssCountRef.current++;
+      console.log("📸 Keyboard Screenshot Detected!");
+      socket.emit("screenshot-taken", {
+        userId: userId,
+        count: ssCountRef.current,
+      });
+    };
+
+    const handleKeyDown = (e) => {
+      if (!canTrack) return;
+      // Detect PrintScreen (Win) and Cmd+Shift shortcuts (Mac)
+      if (
+        e.key === "PrintScreen" ||
+        e.keyCode === 44 ||
+        (e.metaKey && e.shiftKey) ||
+        (e.ctrlKey && e.key === "p")
+      ) {
+        handleScreenshotEvent();
+      }
+    };
+
+    // 3. WINDOW SWITCH HANDLER: Only triggers when focus is lost
     const handleWindowBlur = () => {
-      // We wait 150ms to see if a 'visibilitychange' (Tab Switch) follows.
+      if (!canTrack) return;
+
       blurTimeout = setTimeout(() => {
-        // If 150ms passed and the document is STILL visible,
-        // it means they didn't change tabs, they just clicked outside the window.
+        // If the tab is still visible, it's a Window Switch (clicked outside)
         if (!document.hidden) {
           windowSwitchCountRef.current++;
-          console.log("🚫 WINDOW SWITCH! Count:", windowSwitchCountRef.current);
+          console.log("🚫 WINDOW SWITCH detected");
           socket.emit("window-switch", {
             userId: userId,
             count: windowSwitchCountRef.current,
@@ -139,14 +89,14 @@ function StudentDashboard() {
       }, 150);
     };
 
+    // 4. TAB SWITCH HANDLER: Only triggers when tab is hidden
     const handleVisibilityChange = () => {
-      if (document.hidden) {
-        // If the tab becomes hidden, it's definitely a Tab Switch.
-        // We cancel the pending 'blur' timeout so it doesn't count as a Window Switch too.
-        if (blurTimeout) clearTimeout(blurTimeout);
+      if (!canTrack) return;
 
+      if (document.hidden) {
+        if (blurTimeout) clearTimeout(blurTimeout);
         tabSwitchCountRef.current++;
-        console.log("⚠️ TAB SWITCH! Count:", tabSwitchCountRef.current);
+        console.log("⚠️ TAB SWITCH detected");
         socket.emit("tab-switch", {
           userId: userId,
           count: tabSwitchCountRef.current,
@@ -155,21 +105,23 @@ function StudentDashboard() {
     };
 
     const handleWindowFocus = () => {
-      // If the user comes back before the 150ms is up, cancel the alert.
       if (blurTimeout) clearTimeout(blurTimeout);
     };
 
+    window.addEventListener("keydown", handleKeyDown);
     window.addEventListener("blur", handleWindowBlur);
     window.addEventListener("focus", handleWindowFocus);
     document.addEventListener("visibilitychange", handleVisibilityChange);
 
     return () => {
+      window.removeEventListener("keydown", handleKeyDown);
       window.removeEventListener("blur", handleWindowBlur);
       window.removeEventListener("focus", handleWindowFocus);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
+      clearTimeout(gracePeriodTimeout);
       if (blurTimeout) clearTimeout(blurTimeout);
     };
-  }, [userId]);
+  }, [userId, showExam, canTrack]);
 
   const handleStartExam = () => {
     setShowExamStart(false);
@@ -265,6 +217,7 @@ function StudentDashboard() {
               <ul style={styles.tipsList}>
                 <li>No Tab Switching</li>
                 <li>No Window Switching</li>
+                <li>No Screenshotting (PrintScreen/Shortcuts)</li>
               </ul>
             </div>
           </section>
@@ -286,7 +239,7 @@ function StudentDashboard() {
                       }
                       style={styles.radio}
                     />
-                    <span>{opt}</span>
+                    <span style={styles.optionText}>{opt}</span>
                   </label>
                 ))}
               </div>
@@ -373,7 +326,6 @@ const styles = {
     alignItems: "center",
     gap: "12px",
   },
-  detailIcon: { fontSize: "32px" },
   detailLabel: { fontSize: "12px", color: "#666", marginBottom: "5px" },
   detailValue: { fontSize: "18px", fontWeight: "700", color: "#333" },
   startButton: {
@@ -392,7 +344,6 @@ const styles = {
     cursor: "pointer",
     boxShadow: "0 8px 25px rgba(76, 175, 80, 0.4)",
   },
-  startButtonIcon: { fontSize: "24px" },
   examLayout: {
     display: "grid",
     gridTemplateColumns: "360px 1fr",
@@ -400,11 +351,7 @@ const styles = {
     gap: "20px",
     padding: "20px",
   },
-  cameraSection: {
-    display: "flex",
-    flexDirection: "column",
-    gap: 16,
-  },
+  cameraSection: { display: "flex", flexDirection: "column", gap: 16 },
   cameraCard: {
     background: "white",
     borderRadius: "15px",
@@ -418,16 +365,8 @@ const styles = {
     alignItems: "center",
     justifyContent: "space-between",
   },
-  cameraIcon: { fontSize: "20px" },
-  cameraTitle: {
-    fontSize: "14px",
-    fontWeight: "700",
-    margin: 0,
-  },
-  liveIndicator: {
-    fontSize: "12px",
-    fontWeight: "600",
-  },
+  cameraTitle: { fontSize: "14px", fontWeight: "700", margin: 0 },
+  liveIndicator: { fontSize: "12px", fontWeight: "600" },
   video: {
     width: "100%",
     height: "260px",
@@ -444,10 +383,6 @@ const styles = {
     fontSize: 12,
   },
   userIdLabel: { color: "#777" },
-  userId: {
-    fontWeight: 600,
-    color: "#333",
-  },
   tipsCard: {
     background: "rgba(255,255,255,0.95)",
     borderRadius: 15,
@@ -475,33 +410,9 @@ const styles = {
     borderBottom: "2px solid #e0e0e0",
   },
   examTitle: { fontSize: "24px", color: "#333", margin: "0 0 12px 0" },
-  examInfo: {
-    display: "flex",
-    justifyContent: "space-between",
-    fontSize: "14px",
-  },
-  examTime: { color: "#666" },
-  examStatus: { color: "#4caf50", fontWeight: "600" },
   questionCard: { marginBottom: "24px" },
-  questionMeta: {
-    fontSize: 12,
-    color: "#666",
-    marginBottom: 6,
-  },
-  questionIndex: {
-    fontWeight: 600,
-    color: "#667eea",
-  },
-  questionTitle: {
-    fontSize: "18px",
-    color: "#333",
-    marginBottom: "16px",
-  },
-  optionsContainer: {
-    display: "flex",
-    flexDirection: "column",
-    gap: "10px",
-  },
+  questionTitle: { fontSize: "18px", color: "#333", marginBottom: "16px" },
+  optionsContainer: { display: "flex", flexDirection: "column", gap: "10px" },
   optionLabel: {
     display: "flex",
     alignItems: "center",
@@ -532,14 +443,6 @@ const styles = {
     border: "none",
     borderRadius: "8px",
     fontSize: "14px",
-  },
-  feedback: {
-    background: "#fff3cd",
-    padding: "15px 20px",
-    borderRadius: "10px",
-    marginTop: "20px",
-    border: "1px solid #ffc107",
-    color: "#856404",
   },
 };
 
